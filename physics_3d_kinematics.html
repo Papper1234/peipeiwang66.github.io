@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D运动学物理量可视化 - 平均/瞬时速度/速率/加速度</title>
+    <!-- 修复MathJax加载方式，确保公式正常显示 -->
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei"; }
+        body { background: #eef3ff; overflow-x: hidden; }
+        .header { text-align:center; padding:20px; background:#2c3e50; color:white; }
+        .container { display: flex; width: 1250px; margin:0 auto; gap:10px; padding-left: 10px; }
+        #canvas-container { 
+            width: 850px; height: 700px; background:white; border:1px solid #ccc; 
+            position: relative; margin-left: -10px; 
+        }
+        .legend-panel {
+            position: absolute; top:15px; right:15px;
+            background: rgba(255,255,255,0.95);
+            padding: 10px 15px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15);
+            z-index:10; font-size:14px;
+        }
+        .legend-item { display:flex; align-items:center; gap:8px; margin:5px 0; }
+        .legend-color { width:18px; height:18px; border-radius:4px; }
+        .control-panel { width:380px; height:700px; background:white; padding:20px; overflow-y:auto; margin-right:10px; }
+        .slider-group { margin-bottom:30px; }
+        .slider-group label { display:block; margin-bottom:10px; font-size:18px; font-weight:bold; }
+        #time-slider { width:100%; height:8px; appearance:none; background:#e0e6ed; border-radius:4px; }
+        #time-slider::-webkit-slider-thumb { appearance:none; width:20px; height:20px; border-radius:50%; background:#3498db; }
+        .value-display { margin-top:10px; font-size:16px; line-height:1.8; }
+        .physics-definition { margin-bottom:30px; padding-bottom:20px; border-bottom:1px solid #eee; }
+        .physics-definition h3 { font-size:20px; color:#2980b9; margin-bottom:15px; }
+        .formula { background:#f8f9fa; padding:15px; border-left:4px solid #3498db; margin:10px 0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>三维曲线运动物理量可视化分析</h1>
+        <p>平均速度/平均速率/瞬时速度/瞬时速率/平均加速度/瞬时加速度 - 数学物理模型</p>
+    </div>
+    
+    <div class="container">
+        <div id="canvas-container">
+            <div class="legend-panel">
+                <div class="legend-item"><div class="legend-color" style="background:#3498db;"></div><div>瞬时速度</div></div>
+                <div class="legend-item"><div class="legend-color" style="background:#e74c3c;"></div><div>平均速度</div></div>
+                <div class="legend-item"><div class="legend-color" style="background:#9b59b6;"></div><div>瞬时加速度</div></div>
+                <div class="legend-item"><div class="legend-color" style="background:#f39c12;"></div><div>平均加速度</div></div>
+                <div class="legend-item"><div class="legend-color" style="background:#2ecc71;"></div><div>运动轨迹</div></div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div class="slider-group">
+                <label for="time-slider">时间控制 (t = <span id="time-value">0.0</span> s)</label>
+                <input type="range" id="time-slider" min="0" max="70" value="0" step="1">
+                <div class="value-display">
+                    <div>瞬时速度大小: <strong id="v-inst-val">0.00</strong> m/s</div>
+                    <div>瞬时速率: <strong id="speed-inst-val">0.00</strong> m/s</div>
+                    <div>平均速度大小: <strong id="v-avg-val">0.00</strong> m/s</div>
+                    <div>平均速率: <strong id="speed-avg-val">0.00</strong> m/s</div>
+                    <div>瞬时加速度大小: <strong id="a-inst-val">0.00</strong> m/s²</div>
+                    <div>平均加速度大小: <strong id="a-avg-val">0.00</strong> m/s²</div>
+                </div>
+            </div>
+            
+            <div class="physics-definition">
+                <h3>核心物理定义</h3>
+                <div>
+                    <h4>1. 位置矢量</h4>
+                    <p>描述质点在空间中的位置，是从原点指向质点位置的矢量：</p>
+                    <div class="formula">\[ \vec{r}(t) = x(t)\vec{i} + y(t)\vec{j} + z(t)\vec{k} \]</div>
+                    <p>本模型中：\( x = 0.8t^2 \), \( y = 2\sin(\pi t) \), \( z = 2\cos(\pi t) \)</p>
+                </div>
+                <div>
+                    <h4>2. 瞬时速度</h4>
+                    <p>位置矢量对时间的一阶导数，矢量（大小实时变化）：</p>
+                    <div class="formula">\[ \vec{v}(t) = \frac{d\vec{r}}{dt} = \frac{dx}{dt}\vec{i} + \frac{dy}{dt}\vec{j} + \frac{dz}{dt}\vec{k} \]</div>
+                </div>
+                <div>
+                    <h4>3. 瞬时速率</h4>
+                    <p>瞬时速度的大小，标量（与瞬时速度大小始终相等）：</p>
+                    <div class="formula">\[ v(t) = |\vec{v}(t)| = \frac{ds}{dt} \]</div>
+                </div>
+                <div>
+                    <h4>4. 平均速度</h4>
+                    <p>位移与时间间隔的比值，矢量：</p>
+                    <div class="formula">\[ \vec{v}_{avg} = \frac{\Delta \vec{r}}{\Delta t} \]</div>
+                </div>
+                <div>
+                    <h4>5. 平均速率</h4>
+                    <p>路程与时间间隔的比值，标量（与平均速度大小不等）：</p>
+                    <div class="formula">\[ v_{avg} = \frac{\Delta s}{\Delta t} \]</div>
+                </div>
+                <div>
+                    <h4>6. 瞬时加速度</h4>
+                    <p>速度矢量对时间的一阶导数，矢量：</p>
+                    <div class="formula">\[ \vec{a}(t) = \frac{d\vec{v}}{dt} = \frac{d^2\vec{r}}{dt^2} \]</div>
+                </div>
+                <div>
+                    <h4>7. 平均加速度</h4>
+                    <p>速度变化量与时间间隔的比值，矢量：</p>
+                    <div class="formula">\[ \vec{a}_{avg} = \frac{\Delta \vec{v}}{\Delta t} \]</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ====================== 关键参数 ======================
+        const SHIFT_X = -8;          // 整体左移量
+        const TRAJ_SCALE = 0.4;     // 轨迹缩短2/3
+        const MAX_TIME = 6;          // 轨迹最末端对应的时间（秒）
+        const TEXT_SCALE = 0.9;      // 坐标轴字体大小（0.9）
+
+        // 位置：轨迹缩短 + 整体左移
+        function position(t) {
+            const x = TRAJ_SCALE * 1.2 * t * t + SHIFT_X;
+            const y = TRAJ_SCALE * 2 * Math.sin(Math.PI * t);
+            const z = TRAJ_SCALE * 2 * Math.cos(Math.PI * t);
+            return new THREE.Vector3(x, y, z);
+        }
+
+        function velocity(t) {
+            const dx_dt = TRAJ_SCALE * 2.4 * t;
+            const dy_dt = TRAJ_SCALE * 2 * Math.PI * Math.cos(Math.PI * t);
+            const dz_dt = TRAJ_SCALE * (-2 * Math.PI * Math.sin(Math.PI * t));
+            return new THREE.Vector3(dx_dt, dy_dt, dz_dt);
+        }
+
+        function acceleration(t) {
+            const d2x_dt2 = TRAJ_SCALE * 2.4;
+            const d2y_dt2 = TRAJ_SCALE * (-2 * Math.PI * Math.PI * Math.sin(Math.PI * t));
+            const d2z_dt2 = TRAJ_SCALE * (-2 * Math.PI * Math.PI * Math.cos(Math.PI * t));
+            return new THREE.Vector3(d2x_dt2, d2y_dt2, d2z_dt2);
+        }
+
+        function calculatePathLength(t, steps=80) {
+            if(t===0) return 0;
+            let len=0; const dt=t/steps;
+            for(let i=0;i<steps;i++){
+                const v1=velocity(i*dt).length();
+                const v2=velocity((i+1)*dt).length();
+                len+=(v1+v2)/2*dt;
+            }
+            return len;
+        }
+
+        // 场景初始化
+        const scene=new THREE.Scene();
+        scene.background=new THREE.Color(0xffffff);
+
+        // 相机：支持缩放 + 固定看向画面中心
+        const camera=new THREE.PerspectiveCamera(60, 850/700, 0.1, 2000);
+        camera.position.set(10,10,15);
+        camera.lookAt(0,0,0);
+
+        const renderer=new THREE.WebGLRenderer({antialias:true});
+        renderer.setSize(850,700);
+        const canvasContainer = document.getElementById("canvas-container");
+        canvasContainer.appendChild(renderer.domElement);
+
+        // ====================== 坐标轴（左移 + 加粗） ======================
+        const ox=SHIFT_X, oy=0, oz=0;
+        function createAxis(s,e,c){
+            const mat=new THREE.LineBasicMaterial({color:c, linewidth:3});
+            const geo=new THREE.BufferGeometry().setFromPoints([s,e]);
+            scene.add(new THREE.Line(geo,mat));
+        }
+        // X轴（红）、Y轴（绿）、Z轴（蓝）
+        createAxis(new THREE.Vector3(ox,oy,oz), new THREE.Vector3(ox+8,oy,oz), 0x000000);
+        createAxis(new THREE.Vector3(ox,oy,oz), new THREE.Vector3(ox,oy+5,oz), 0x000000);
+        createAxis(new THREE.Vector3(ox,oy,oz), new THREE.Vector3(ox,oy,oz+5), 0x000000);
+
+        // ====================== 坐标轴标注（字体大小0.9） ======================
+        function createText(text, pos, size=TEXT_SCALE) {
+            const c=document.createElement("canvas");
+            const g=c.getContext("2d");
+            c.width=256; c.height=64;
+            g.font="bold 32px Arial";  // 字体基础大小适配0.9缩放
+            g.fillStyle="#000";
+            g.textAlign="center";
+            g.fillText(text, 128,32);
+            const tex=new THREE.CanvasTexture(c);
+            const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex}));
+            s.position.copy(pos);
+            s.scale.set(size*4, size,1);  // 缩放匹配0.9大小
+            scene.add(s);
+        }
+
+        // 标注O/X/Y/Z，字体大小0.9
+        createText("O", new THREE.Vector3(ox-0.3, oy+0.3, oz), TEXT_SCALE);
+        createText("X", new THREE.Vector3(ox+8.5, oy, oz), TEXT_SCALE);
+        createText("Y", new THREE.Vector3(ox, oy+5.5, oz), TEXT_SCALE);
+        createText("Z", new THREE.Vector3(ox, oy, oz+5.5), TEXT_SCALE);
+
+        // ====================== 运动轨迹（匹配MAX_TIME） ======================
+        const pts=[];
+        for(let t=0;t<=MAX_TIME;t+=0.1) pts.push(position(t));
+        const line=new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(pts),
+            new THREE.LineBasicMaterial({color:0x2ecc71, linewidth:2})
+        );
+        scene.add(line);
+
+        // 质点
+        const ball=new THREE.Mesh(
+            new THREE.SphereGeometry(0.25,20,20),
+            new THREE.MeshBasicMaterial({color:0xe74c3c})
+        );
+        scene.add(ball);
+
+        // ====================== 箭头修改：加粗+变长一倍 ======================
+        // 原参数：0.4(箭头头长度), 0.2(箭头头宽度) → 翻倍为 0.8, 0.4
+        // 初始长度从1 → 2（变长一倍）
+        const vArrow=new THREE.ArrowHelper(new THREE.Vector3(),new THREE.Vector3(),2,0x3498db,0.8,0.4);
+        const vaArrow=new THREE.ArrowHelper(new THREE.Vector3(),new THREE.Vector3(),2,0xe74c3c,0.8,0.4);
+        const aArrow=new THREE.ArrowHelper(new THREE.Vector3(),new THREE.Vector3(),2,0x9b59b6,0.8,0.4);
+        const aaArrow=new THREE.ArrowHelper(new THREE.Vector3(),new THREE.Vector3(),2,0xf39c12,0.8,0.4);
+        scene.add(vArrow,vaArrow,aArrow,aaArrow);
+
+        // ====================== 交互控制（鼠标旋转 + 滚轮缩放） ======================
+        let drag=false, sx=0,sy=0;
+        
+        // 鼠标旋转
+        renderer.domElement.addEventListener("mousedown",e=>{
+            drag=true; 
+            sx=e.clientX; 
+            sy=e.clientY;
+            renderer.domElement.style.cursor = "grabbing";
+        });
+        renderer.domElement.addEventListener("mouseup",()=>{
+            drag=false;
+            renderer.domElement.style.cursor = "grab";
+        });
+        renderer.domElement.addEventListener("mousemove",e=>{
+            if(!drag) return;
+            const deltaX = e.clientX - sx;
+            const deltaY = e.clientY - sy;
+            scene.rotation.y -= deltaX * 0.005;
+            scene.rotation.x -= deltaY * 0.005;
+            // 限制上下旋转角度，避免翻转
+            scene.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, scene.rotation.x));
+            sx=e.clientX; 
+            sy=e.clientY;
+        });
+
+        // 滚轮缩放（画面随意缩放）
+        renderer.domElement.addEventListener("wheel",e=>{
+            e.preventDefault();
+            // 缩放系数：滚轮每滚动1单位，相机距离变化0.5
+            const zoomSpeed = 0.5;
+            const direction = e.deltaY > 0 ? -1 : 1;
+            // 相机位置归一化 + 缩放
+            const camDir = camera.position.clone().normalize();
+            const currentDist = camera.position.length();
+            const newDist = currentDist + direction * zoomSpeed;
+            // 限制缩放范围（避免太近/太远）
+            const minDist = 5;
+            const maxDist = 50;
+            if(newDist >= minDist && newDist <= maxDist){
+                camera.position.copy(camDir.multiplyScalar(newDist));
+            }
+        });
+        renderer.domElement.style.cursor = "grab";
+
+        // ====================== 更新逻辑（时间匹配轨迹末端） ======================
+        function update(val){
+            const t = Math.min(val / 10, MAX_TIME);  // 限制时间不超过轨迹末端
+            const p=position(t);
+            const v=velocity(t);
+            const a=acceleration(t);
+            const p0=position(0);
+            const v0=velocity(0);
+
+            ball.position.copy(p);
+
+            // 瞬时速度箭头：长度系数从0.25→0.5（变长一倍）
+            if(v.length()>0.01){
+                vArrow.position.copy(p);
+                vArrow.setDirection(v.clone().normalize());
+                vArrow.setLength(Math.min(v.length()*0.5, 5)); // 长度翻倍，上限同步调整
+                vArrow.visible=true;
+            }else vArrow.visible=false;
+
+            // 平均速度箭头：长度系数从0.25→0.5（变长一倍）
+            if(t>0.01){
+                const dv=p.clone().sub(p0);
+                const vavg=dv.clone().divideScalar(t);
+                if(vavg.length()>0.01){
+                    vaArrow.position.copy(p0);
+                    vaArrow.setDirection(vavg.normalize());
+                    vaArrow.setLength(Math.min(vavg.length()*2,5)); // 长度翻倍，上限同步调整
+                    vaArrow.visible=true;
+                }else vaArrow.visible=false;
+            }else vaArrow.visible=false;
+
+            // 瞬时加速度箭头：长度系数从0.15→0.3（变长一倍）
+            if(a.length()>0.01){
+                aArrow.position.copy(p);
+                aArrow.setDirection(a.clone().normalize());
+                aArrow.setLength(Math.min(a.length()*0.3, 4)); // 长度翻倍，上限同步调整
+                aArrow.visible=true;
+            }else aArrow.visible=false;
+
+            // 平均加速度箭头：长度系数从0.15→0.3（变长一倍）
+            if(t>0.01){
+                const dv=v.clone().sub(v0);
+                const aavg=dv.clone().divideScalar(t);
+                if(aavg.length()>0.01){
+                    aaArrow.position.copy(p);
+                    aaArrow.setDirection(aavg.normalize());
+                    aaArrow.setLength(Math.min(aavg.length()*0.3,4)); // 长度翻倍，上限同步调整
+                    aaArrow.visible=true;
+                }else aaArrow.visible=false;
+            }else aaArrow.visible=false;
+
+            // 更新数值显示
+            document.getElementById("time-value").textContent=t.toFixed(1);
+            document.getElementById("v-inst-val").textContent=v.length().toFixed(2);
+            document.getElementById("speed-inst-val").textContent=v.length().toFixed(2);
+            const path=calculatePathLength(t);
+            document.getElementById("speed-avg-val").textContent=t>0?(path/t).toFixed(2):"0.00";
+            document.getElementById("v-avg-val").textContent=t>0?p.clone().sub(position(0)).length().toFixed(2):"0.00";
+            document.getElementById("a-inst-val").textContent=a.length().toFixed(2);
+            document.getElementById("a-avg-val").textContent=t>0?v.clone().sub(velocity(0)).length().toFixed(2):"0.00";
+        }
+
+        // 设置时间滑块最大值（匹配轨迹末端）
+        const timeSlider = document.getElementById("time-slider");
+        timeSlider.max = MAX_TIME * 10;  // 滑块值 = 时间(秒)*10
+        timeSlider.addEventListener("input",e=>update(+e.target.value));
+
+        // 渲染循环
+        function animate(){
+            requestAnimationFrame(animate);
+            renderer.render(scene,camera);
+        }
+        update(0);
+        animate();
+    </script>
+</body>
+</html>

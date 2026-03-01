@@ -47,6 +47,13 @@ button:hover { background:#08306b; color:white; transform:translateY(-6px); box-
     background: #0a408b;
     transform: translateY(-4px);
 }
+/* 按钮间距调整 */
+.btn-group {
+    display: grid;
+    grid-template-columns: 300px 300px;
+    gap: 30px;
+    margin-bottom: 20px;
+}
 </style>
 
 <script>
@@ -68,73 +75,20 @@ function toggleSubcontent(id) {
     MathJax.typesetPromise([el]);
 }
 
-// 新增：打开三维仿真页面
-function open3dSimulation() {
-    // 方式1：在新窗口打开
+// 新增：打开三维仿真页面（位矢/位移/路程）
+function open3dTrajectorySimulation() {
     window.open('3d_kinematics.html', '_blank', 'width=1200,height=800');
-    
-    // 如果你想在当前窗口打开（替换当前页面），请使用下面这行代码替代上面的：
-    // window.location.href = '3d_kinematics.html';
+}
+
+// 新增：打开三维仿真页面（速度/速率/加速度）
+function open3dKinematicsSimulation() {
+    window.open('physics_3d_kinematics.html', '_blank', 'width=1200,height=800');
 }
 
 document.addEventListener("DOMContentLoaded", function(){
     // 初始化原有仿真（保留，也可以删除）
     // initKinematicsSimulation();
 });
-
-// === 原有简单仿真代码（可保留或删除）===
-function initKinematicsSimulation() {
-    drawModel1(0);
-    drawModel2(0);
-    drawModel3(0);
-}
-
-function drawModel1(t) {
-    const canvas = document.getElementById('canvas1'); if(!canvas) return;
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    ctx.strokeStyle="#000";
-    ctx.beginPath();
-    ctx.moveTo(50,250); ctx.lineTo(450,250); ctx.stroke();
-
-    let x=50+4*t;
-    ctx.strokeStyle="red"; ctx.beginPath();
-    ctx.moveTo(50,250); ctx.lineTo(x,250); ctx.stroke();
-    ctx.fillStyle="red"; ctx.fillText("位矢 r",x+5,240);
-
-    ctx.strokeStyle="blue"; ctx.beginPath();
-    ctx.moveTo(50,260); ctx.lineTo(x,260); ctx.stroke();
-    ctx.fillStyle="blue"; ctx.fillText("位移 s",x+5,270);
-
-    ctx.strokeStyle="green"; ctx.beginPath();
-    ctx.moveTo(50,280); ctx.lineTo(x,280); ctx.stroke();
-    ctx.fillStyle="green"; ctx.fillText("路程",x+5,290);
-}
-
-function drawModel2(t){
-    const canvas=document.getElementById('canvas2'); if(!canvas) return;
-    const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
-    let v_avg=2, v_inst=2+0.5*Math.sin(t/10), speed_avg=Math.abs(v_avg), speed_inst=Math.abs(v_inst);
-    ctx.fillStyle="black";
-    ctx.fillText(`平均速度: \\(${v_avg} m/s\\)`,10,20);
-    ctx.fillText(`瞬时速度: \\(${v_inst.toFixed(2)} m/s\\)`,10,40);
-    ctx.fillText(`平均速率: \\(${speed_avg} m/s\\)`,10,60);
-    ctx.fillText(`瞬时速率: \\(${speed_inst.toFixed(2)} m/s\\)`,10,80);
-    MathJax.typesetPromise([canvas.parentElement]);
-}
-
-function drawModel3(t){
-    const canvas=document.getElementById('canvas3'); if(!canvas) return;
-    const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
-    let a_avg=1, a_inst=a_avg+0.5*Math.cos(t/10);
-    ctx.fillText(`平均加速度: \\(${a_avg} m/s^2\\)`,10,20);
-    ctx.fillText(`瞬时加速度: \\(${a_inst.toFixed(2)} m/s^2\\)`,10,40);
-    MathJax.typesetPromise([canvas.parentElement]);
-}
-function updateModel1(val){ drawModel1(val); }
-function updateModel2(val){ drawModel2(val); }
-function updateModel3(val){ drawModel3(val); }
 </script>
 
 </head>
@@ -242,46 +196,16 @@ function updateModel3(val){ drawModel3(val); }
     <div class="center-container">
         <div class="title">运动学仿真交互模型</div>
 
-        <!-- 新增：三维仿真入口按钮 -->
-        <button class="external-btn" onclick="open3dSimulation()">
-            三维曲线运动仿真（位矢/位移/路程）
-        </button>
-
-        <!-- 原有简单仿真模块（可保留或删除） -->
-        <div class="section" style="margin-top: 40px; max-width: 800px;">
-            <h3 onclick="toggleSubcontent('simpleModels')">基础二维仿真模型（备用）</h3>
-            <div class="subcontent" id="simpleModels">
-                <div class="section">
-                    <h3 onclick="toggleSubcontent('model1')">模型1：位矢、位移、路程</h3>
-                    <div class="subcontent" id="model1">
-                        <canvas id="canvas1" width="500" height="300"></canvas>
-                        <div class="slider-container">
-                            时间: <input type="range" min="0" max="100" value="0" oninput="updateModel1(this.value)">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="section">
-                    <h3 onclick="toggleSubcontent('model2')">模型2：平均速度、瞬时速度、平均速率、瞬时速率</h3>
-                    <div class="subcontent" id="model2">
-                        <canvas id="canvas2" width="500" height="100"></canvas>
-                        <div class="slider-container">
-                            时间: <input type="range" min="0" max="100" value="0" oninput="updateModel2(this.value)">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="section">
-                    <h3 onclick="toggleSubcontent('model3')">模型3：平均加速度、瞬时加速度</h3>
-                    <div class="subcontent" id="model3">
-                        <canvas id="canvas3" width="500" height="100"></canvas>
-                        <div class="slider-container">
-                            时间: <input type="range" min="0" max="100" value="0" oninput="updateModel3(this.value)">
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <!-- 新增：两个三维仿真入口按钮（并排布局） -->
+        <div class="btn-group">
+            <button class="external-btn" onclick="open3dTrajectorySimulation()">
+                三维曲线运动仿真（位矢/位移/路程）
+            </button>
+            <button class="external-btn" onclick="open3dKinematicsSimulation()">
+                三维曲线运动仿真（速度/速率/加速度）
+            </button>
         </div>
+
 
         <button class="back-btn" onclick="goBack('kinematics')">返回运动学</button>
     </div>
