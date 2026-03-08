@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>相对风速问题 - 3D矢量合成推演</title>
+    <style>
+        :root {
+            --primary: #3b82f6;     /* 人速度 - 蓝色 */
+            --success: #10b981;     /* 相对风速 - 绿色 */
+            --danger: #ef4444;      /* 绝对风速 - 红色 */
+            --bg-color: #0b1120;
+            --panel-bg: rgba(15, 23, 42, 0.85);
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg-color); color: #f8fafc;
+        }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* 浮动标签样式 (用于3D空间内的矢量批注) */
+        .floating-label {
+            position: absolute; pointer-events: none; z-index: 5;
+            transform: translate(-50%, -50%); transition: opacity 0.3s;
+            font-weight: bold; font-size: 14px; text-shadow: 1px 1px 3px #000;
+            opacity: 0; /* 初始隐藏 */
+        }
+        .c-vp { color: #60a5fa; }
+        .c-vr { color: #34d399; }
+        .c-va { color: #f87171; }
+        
+        /* 右侧推演控制台 */
+        #control-panel {
+            position: absolute; top: 20px; right: 20px; width: 360px;
+            background: var(--panel-bg); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+            padding: 24px; z-index: 10; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex; flex-direction: column; max-height: 90vh;
+        }
+        .header { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 16px; margin-bottom: 20px; }
+        h1 { font-size: 18px; margin: 0 0 8px 0; letter-spacing: 1px; }
+        .problem-desc { font-size: 13px; color: #cbd5e1; line-height: 1.5; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border-left: 3px solid #facc15;}
+
+        /* 时间轴/步骤列表 */
+        .step-list { flex: 1; overflow-y: auto; margin-bottom: 20px; padding-right: 10px; }
+        .step-item {
+            padding: 12px 16px; margin-bottom: 10px; border-radius: 8px;
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05);
+            font-size: 14px; color: #64748b; transition: all 0.3s;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .step-item.active {
+            background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2);
+            color: #fff; transform: translateX(-5px); box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .step-item.completed { color: #cbd5e1; }
+        
+        .step-dot { width: 8px; height: 8px; border-radius: 50%; background: #475569; }
+        .step-item.active .step-dot { background: #facc15; box-shadow: 0 0 8px #facc15; }
+        .step-item.completed .step-dot { background: #10b981; }
+
+        /* 底部控制按钮 */
+        .controls { display: flex; gap: 12px; }
+        button {
+            flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold;
+            cursor: pointer; transition: 0.2s; font-size: 14px;
+        }
+        .btn-prev { background: rgba(255,255,255,0.1); color: #fff; }
+        .btn-prev:hover:not(:disabled) { background: rgba(255,255,255,0.2); }
+        .btn-next { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: #fff; }
+        .btn-next:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
+        button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        /* 最终结果面板 */
+        #result-box {
+            display: none; background: rgba(239, 68, 68, 0.15); border: 1px dashed var(--danger);
+            border-radius: 8px; padding: 15px; margin-top: 15px; text-align: center;
+            animation: fadeIn 0.5s forwards;
+        }
+        @keyframes fadeIn { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+        
+        #hint { position: absolute; bottom: 20px; left: 20px; color: rgba(255,255,255,0.4); font-size: 12px; z-index: 10; pointer-events: none;}
+    </style>
+    <!-- 引入 Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div id="hint">左键旋转视角 | 滚轮缩放 | 右键平移</div>
+
+    <!-- 3D空间漂浮标签 -->
+    <div id="lbl-vp1" class="floating-label c-vp">V_人1 (向东 4km/h)</div>
+    <div id="lbl-vr1" class="floating-label c-vr">V_风相1 (正北吹来)</div>
+    <div id="lbl-va"  class="floating-label c-va" style="font-size: 16px;">V_真实 (绝对风速)</div>
+    <div id="lbl-vp2" class="floating-label c-vp">V_人2 (向东 8km/h)</div>
+    <div id="lbl-vr2" class="floating-label c-vr">V_风相2 (东北吹来)</div>
+
+    <!-- 右侧推演控制台 -->
+    <div id="control-panel">
+        <div class="header">
+            <h1>风速矢量合成推演</h1>
+            <div class="problem-desc">
+                某人以 4km/h 向东前进，感觉风从正北吹来；若速度倍增至 8km/h，则感觉风从东北吹来。求真实风速与风向。
+            </div>
+        </div>
+
+        <div class="step-list" id="step-list">
+            <!-- 步骤项由 JS 动态渲染 -->
+        </div>
+
+        <div id="result-box">
+            <div style="font-size: 13px; color: #fca5a5; margin-bottom: 4px;">解算结果</div>
+            <div style="font-size: 18px; font-weight: bold; color: #fff;">
+                风速: 4√2 ≈ 5.66 km/h<br>风向: 西北风
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-prev" id="btn-prev" disabled>上一步</button>
+            <button class="btn-next" id="btn-next">下一步解析</button>
+        </div>
+    </div>
+
+    <script>
+        // === 1. 推演步骤状态机设计 ===
+        const steps =[
+            { id: 0, title: "初始场景：建立地面参考系", desc: "设向东为 +x 轴，向北为 -z 轴" },
+            { id: 1, title: "情形一：人以 4km/h 向东运动", desc: "画出牵连速度 V_人1，并在末端标记观察者(奔跑的小人)" },
+            { id: 2, title: "情形一：感觉风从正北吹来", desc: "风迎面吹向小人，画出相对风速矢量 V_相1 (指向正南)" },
+            { id: 3, title: "合成：构建第一个矢量三角形", desc: "真实风速 V_真 = V_人1 + V_相1" },
+            { id: 4, title: "情形二：人提速至 8km/h 向东", desc: "画出加倍的牵连速度 V_人2，小人移动至新位置" },
+            { id: 5, title: "情形二：感觉风从东北吹来", desc: "新的风向吹向小人，画出相对风速 V_相2 (指向西南)" },
+            { id: 6, title: "核心突破：共用同一个绝对速度", desc: "震撼发现：两个三角形的 V_真 完美重合在红线上！" },
+            { id: 7, title: "得出结论：解算几何关系", desc: "根据等腰直角三角形几何关系求出真实风速" }
+        ];
+
+        let currentStep = 0;
+
+        // 初始化 UI 列表
+        const stepListEl = document.getElementById('step-list');
+        steps.forEach((step, index) => {
+            const el = document.createElement('div');
+            el.className = `step-item ${index === 0 ? 'active' : ''}`;
+            el.id = `step-item-${index}`;
+            el.innerHTML = `
+                <div class="step-dot"></div>
+                <div>
+                    <div style="font-weight: bold; margin-bottom: 2px;">${step.title}</div>
+                    <div style="font-size: 12px; opacity: 0.8;">${step.desc}</div>
+                </div>
+            `;
+            stepListEl.appendChild(el);
+        });
+
+        // === 2. Three.js 场景初始化 ===
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0b1120, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(6, 10, 14); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(4, 0, 2);
+
+        // 灯光
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // 网格与方向罗盘
+        const gridHelper = new THREE.GridHelper(20, 20, 0x1e293b, 0x1e293b);
+        scene.add(gridHelper);
+
+        function createTextSprite(message, color) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = color;
+            ctx.font = 'bold 60px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(message, 64, 64);
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(2, 2, 1);
+            return sprite;
+        }
+        
+        const labelE = createTextSprite('东 (x)', '#ffffff'); labelE.position.set(10, 0.2, 0); scene.add(labelE);
+        const labelW = createTextSprite('西', '#64748b'); labelW.position.set(-10, 0.2, 0); scene.add(labelW);
+        const labelS = createTextSprite('南 (z)', '#ffffff'); labelS.position.set(0, 0.2, 10); scene.add(labelS);
+        const labelN = createTextSprite('北', '#64748b'); labelN.position.set(0, 0.2, -10); scene.add(labelN);
+
+        // === 3. 核心物理对象：箭头与3D小人 ===
+        const animatables =[]; // 需要进行缩放动画的所有对象
+        
+        // 绘制粗箭头
+        function createThickArrow(origin, dir, length, color, id) {
+            const group = new THREE.Group();
+            group.position.copy(origin);
+            
+            const direction = dir.clone().normalize();
+            const shaftRadius = 0.08;
+            const headRadius = 0.25;
+            const headLength = 0.8;
+            const shaftLength = length - headLength;
+            
+            const mat = new THREE.MeshPhongMaterial({ color: color, shininess: 50 });
+            
+            const shaftGeo = new THREE.CylinderGeometry(shaftRadius, shaftRadius, shaftLength, 16);
+            shaftGeo.translate(0, shaftLength / 2, 0);
+            const shaft = new THREE.Mesh(shaftGeo, mat);
+            
+            const headGeo = new THREE.ConeGeometry(headRadius, headLength, 16);
+            headGeo.translate(0, shaftLength + headLength / 2, 0);
+            const head = new THREE.Mesh(headGeo, mat);
+            
+            group.add(shaft); group.add(head);
+            group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+            
+            group.userData = { id: id, targetScale: 0, length: length, midPoint: new THREE.Vector3() };
+            group.userData.midPoint.copy(origin).add(direction.multiplyScalar(length / 2));
+            
+            group.scale.set(0.001, 0.001, 0.001);
+            scene.add(group);
+            animatables.push(group);
+            return group;
+        }
+
+        // --- 代码生成 3D 奔跑小人 ---
+        function createMannequin(color) {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshPhongMaterial({ color: color, shininess: 60 });
+            
+            // 头部
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), mat);
+            head.position.y = 1.4;
+            group.add(head);
+            
+            // 躯干
+            const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.6, 16), mat);
+            torso.position.y = 0.9;
+            group.add(torso);
+            
+            // 手臂 (左前右后，模拟奔跑)
+            const armGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.5, 16);
+            const armL = new THREE.Mesh(armGeo, mat);
+            armL.position.set(0.25, 1.0, 0);
+            armL.rotation.z = Math.PI / 8; // 外扩
+            armL.rotation.x = Math.PI / 4; // 往前摆
+            group.add(armL);
+            
+            const armR = new THREE.Mesh(armGeo, mat);
+            armR.position.set(-0.25, 1.0, 0);
+            armR.rotation.z = -Math.PI / 8;
+            armR.rotation.x = -Math.PI / 4; // 往后摆
+            group.add(armR);
+            
+            // 腿部 (左后右前)
+            const legGeo = new THREE.CylinderGeometry(0.08, 0.06, 0.6, 16);
+            const legL = new THREE.Mesh(legGeo, mat);
+            legL.position.set(0.1, 0.3, 0);
+            legL.rotation.x = -Math.PI / 6; // 往后蹬
+            group.add(legL);
+            
+            const legR = new THREE.Mesh(legGeo, mat);
+            legR.position.set(-0.1, 0.3, 0);
+            legR.rotation.x = Math.PI / 6;  // 往前跨
+            group.add(legR);
+
+            // 整体调整：面向东 (+x 轴)，并身体前倾
+            group.rotation.y = Math.PI / 2; // 面向东
+            group.rotation.x = Math.PI / 12; // 身体前倾 (围绕局部X轴旋转)
+
+            // 稍微缩小一点适应网格比例
+            const scaleWrapper = new THREE.Group();
+            scaleWrapper.add(group);
+            scaleWrapper.scale.set(0.8, 0.8, 0.8);
+            
+            return scaleWrapper;
+        }
+
+        /* 矢量颜色 */
+        const colorVp = 0x3b82f6; // 蓝
+        const colorVr = 0x10b981; // 绿
+        const colorVa = 0xef4444; // 红
+
+        // 1. 情形一：V_人1 (向东，长4)
+        const arrVp1 = createThickArrow(new THREE.Vector3(0,0,0), new THREE.Vector3(1,0,0), 4, colorVp, 'vp1');
+        // 添加小人 1 (站立在牵连速度的末端 4,0,0，也是相对风吹来的聚焦点)
+        const person1 = createMannequin(0x93c5fd); // 亮蓝色
+        person1.position.set(4, 0, 0);
+        person1.userData = { targetScale: 0 };
+        person1.scale.set(0.001, 0.001, 0.001);
+        scene.add(person1);
+        animatables.push(person1);
+
+        // V_相1 (正北吹来，即指向正南 +z)
+        const arrVr1 = createThickArrow(new THREE.Vector3(4,0,0), new THREE.Vector3(0,0,1), 4, colorVr, 'vr1');
+        
+        // V_绝对 (由 V_人1 + V_相1 合成)
+        const arrVa = createThickArrow(new THREE.Vector3(0,0,0), new THREE.Vector3(4,0,4), 5.657, colorVa, 'va');
+        
+        // 2. 情形二：V_人2 (提速至 8)
+        const arrVp2 = createThickArrow(new THREE.Vector3(0,0.05,0), new THREE.Vector3(1,0,0), 8, colorVp, 'vp2');
+        // 添加小人 2 (站立在新位置 8,0,0)
+        const person2 = createMannequin(0x2563eb); // 深蓝色
+        person2.position.set(8, 0.05, 0);
+        person2.userData = { targetScale: 0 };
+        person2.scale.set(0.001, 0.001, 0.001);
+        scene.add(person2);
+        animatables.push(person2);
+
+        // V_相2 (东北吹来，即指向西南 -x,+z)
+        const arrVr2 = createThickArrow(new THREE.Vector3(8,0.05,0), new THREE.Vector3(-1,0,1), 5.657, colorVr, 'vr2');
+
+
+        // === 4. UI 逻辑与状态更新 ===
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+        const resultBox = document.getElementById('result-box');
+
+        const labels = {
+            'vp1': document.getElementById('lbl-vp1'),
+            'vr1': document.getElementById('lbl-vr1'),
+            'va':  document.getElementById('lbl-va'),
+            'vp2': document.getElementById('lbl-vp2'),
+            'vr2': document.getElementById('lbl-vr2')
+        };
+
+        function updateSimulationState() {
+            for (let i = 0; i < steps.length; i++) {
+                const el = document.getElementById(`step-item-${i}`);
+                el.classList.remove('active', 'completed');
+                if (i < currentStep) el.classList.add('completed');
+                if (i === currentStep) el.classList.add('active');
+            }
+            
+            document.getElementById(`step-item-${currentStep}`).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            btnPrev.disabled = currentStep === 0;
+            btnNext.disabled = currentStep === steps.length - 1;
+            resultBox.style.display = currentStep === 7 ? 'block' : 'none';
+
+            // 设置矢量箭头的显隐目标
+            arrVp1.userData.targetScale = (currentStep >= 1 && currentStep <= 7) ? 1 : 0;
+            arrVr1.userData.targetScale = (currentStep >= 2 && currentStep <= 7) ? 1 : 0;
+            arrVa.userData.targetScale  = (currentStep >= 3 && currentStep <= 7) ? 1 : 0;
+            
+            arrVp2.userData.targetScale = (currentStep >= 4 && currentStep <= 7) ? 1 : 0;
+            arrVr2.userData.targetScale = (currentStep >= 5 && currentStep <= 7) ? 1 : 0;
+
+            // 设置 3D 小人的显隐目标 (同步跟随牵连速度出现)
+            person1.userData.targetScale = (currentStep >= 1 && currentStep <= 7) ? 1 : 0;
+            person2.userData.targetScale = (currentStep >= 4 && currentStep <= 7) ? 1 : 0;
+        }
+
+        btnNext.addEventListener('click', () => {
+            if (currentStep < steps.length - 1) { currentStep++; updateSimulationState(); }
+        });
+
+        btnPrev.addEventListener('click', () => {
+            if (currentStep > 0) { currentStep--; updateSimulationState(); }
+        });
+
+        // === 5. 渲染与动画循环 ===
+        function updateLabels() {
+            animatables.forEach(obj => {
+                if(!obj.userData.id) return; // 过滤掉小人，只给箭头加 HTML 文字标签
+                const id = obj.userData.id;
+                const label = labels[id];
+                if (!label) return;
+
+                if (obj.scale.x < 0.1) {
+                    label.style.opacity = '0';
+                    return;
+                }
+
+                const vector = obj.userData.midPoint.clone();
+                vector.y += 0.5; // 文字上浮
+                vector.project(camera);
+
+                if (vector.z > 1) {
+                    label.style.opacity = '0'; return;
+                }
+
+                const x = Math.round((0.5 + vector.x / 2) * window.innerWidth);
+                const y = Math.round((0.5 - vector.y / 2) * window.innerHeight);
+
+                label.style.opacity = '1';
+                label.style.left = x + 'px';
+                label.style.top = y + 'px';
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Lerp 丝滑缩放动画 (包括箭头和奔跑的3D小人)
+            animatables.forEach(obj => {
+                const target = obj.userData.targetScale;
+                const current = obj.scale.x;
+                const tgt = target === 0 ? 0.001 : target;
+                const newScale = current + (tgt - current) * 0.15;
+                obj.scale.set(newScale, newScale, newScale);
+            });
+
+            updateLabels();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        updateSimulationState();
+        animate();
+
+    </script>
+</body>
+</html>

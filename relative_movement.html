@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>伽利略坐标变换 - 动态推演平台</title>
+    <style>
+        :root {
+            --vec-op: #ef4444; /* 红色：绝对位矢 r */
+            --vec-o-prime-p: #10b981; /* 绿色：相对位矢 r' */
+            --vec-oo-prime: #3b82f6; /* 蓝色：参考系位矢 R */
+            --frame-k: #94a3b8; /* 静止系颜色 */
+            --frame-k-prime: #facc15; /* 运动系颜色 */
+            --bg-color: #0f172a;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: var(--bg-color);
+            font-family: 'Segoe UI', system-ui, sans-serif; color: #f8fafc;
+        }
+        #canvas-container { position: absolute; width: 100%; height: 100%; z-index: 1; }
+        
+        /* UI 悬浮面板 */
+        #control-panel {
+            position: absolute; top: 20px; right: 20px; width: 350px;
+            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+            padding: 20px; z-index: 10; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .header { margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; }
+        h1 { font-size: 18px; margin: 0 0 4px 0; color: #fff; }
+        .subtitle { font-size: 12px; color: #94a3b8; margin: 0; }
+        
+        /* 启发式按钮样式 */
+        .reveal-btn {
+            width: 100%; padding: 12px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border: none; border-radius: 8px; color: white;
+            font-size: 15px; font-weight: bold; letter-spacing: 2px;
+            cursor: pointer; margin-bottom: 20px; transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        .reveal-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5); }
+        .reveal-btn:active { transform: translateY(0); }
+
+        /* 核心公式展示区 - 初始隐藏 */
+        .formula-box {
+            display: none; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 14px 12px;
+            text-align: center; border: 1px dashed rgba(255,255,255,0.2); margin-bottom: 20px;
+        }
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .formula-row {
+            display: flex; align-items: baseline; justify-content: center;
+            gap: 8px; font-size: 18px; font-family: 'Times New Roman', Times, serif; font-weight: bold;
+        }
+        
+        /* CSS 原生实现数学矢量符号样式 */
+        .vec-box { display: inline-flex; flex-direction: column; align-items: center; }
+        .vec-arrow { font-size: 14px; line-height: 0.5; margin-bottom: 2px; font-weight: normal; }
+        .vec-letters { font-style: italic; letter-spacing: 1px; }
+
+        .c-op { color: var(--vec-op); }
+        .c-oop { color: var(--vec-oo-prime); }
+        .c-opp { color: var(--vec-o-prime-p); }
+        
+        /* 控件与数据 */
+        .control-group { margin-bottom: 20px; }
+        .label-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
+        input[type=range] { width: 100%; accent-color: var(--frame-k-prime); cursor: pointer; }
+        
+        .data-card { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; margin-bottom: 10px; font-size: 13px; }
+        .data-card.k-frame { border-left: 3px solid var(--frame-k); }
+        .data-card.k-prime-frame { border-left: 3px solid var(--frame-k-prime); }
+        .coord-row { display: flex; justify-content: space-between; font-family: monospace; font-size: 14px; margin-top: 4px; }
+
+        /* 3D 空间标签 */
+        .floating-label {
+            position: absolute; pointer-events: none; z-index: 5;
+            transform: translate(-50%, -50%); transition: opacity 0.1s;
+            font-weight: bold; font-size: 14px; text-shadow: 1px 1px 2px #000;
+        }
+        .tag-o { color: var(--frame-k); }
+        .tag-oprime { color: var(--frame-k-prime); font-size: 16px; }
+        .tag-p { color: #fff; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); }
+        
+        /* 坐标轴专属字体样式：类似数学公式斜体 */
+        .tag-axis-k { color: var(--frame-k); font-family: 'Times New Roman', Times, serif; font-style: italic; font-size: 18px; }
+        .tag-axis-kprime { color: var(--frame-k-prime); font-family: 'Times New Roman', Times, serif; font-style: italic; font-size: 18px; }
+
+        #hint { position: absolute; bottom: 20px; width: 100%; text-align: center; color: rgba(255,255,255,0.4); font-size: 12px; pointer-events: none; z-index: 10; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    
+    <!-- 空间点与矢量标签 -->
+    <div id="label-o" class="floating-label tag-o">O (K系)</div>
+    <div id="label-oprime" class="floating-label tag-oprime">O' (K'系)</div>
+    <div id="label-p" class="floating-label tag-p">质点 P</div>
+    
+    <!-- 空间中的矢量文字：r 与 r' -->
+    <div id="label-vec-op" class="floating-label c-op">
+        <span class="vec-box"><span class="vec-arrow">→</span><span class="vec-letters" style="font-weight:bold;">r</span></span> (绝对位矢)
+    </div>
+    <div id="label-vec-opp" class="floating-label c-opp">
+        <span class="vec-box"><span class="vec-arrow">→</span><span class="vec-letters" style="font-weight:bold;">r'</span></span> (相对位矢)
+    </div>
+    
+
+    <!-- 更新：将 OO' 的标注改为上下双层结构（上：矢量R = 矢量Vt，下：中文描述） -->
+    <div id="label-vec-oop" class="floating-label c-oop" style="display: flex; flex-direction: column; align-items: center;">
+        
+        <!-- 上层：严谨的物理等式 -->
+        <div style="display: flex; align-items: baseline; font-family: 'Times New Roman', Times, serif; font-size: 16px;">
+            <span class="vec-box">
+                <span class="vec-arrow">→</span>
+                <span class="vec-letters" style="font-weight:bold;">R</span>
+            </span>
+            <span style="margin: 0 4px;">=</span>
+            <span class="vec-box">
+                <span class="vec-arrow">→</span>
+                <span class="vec-letters" style="font-weight:bold;">V</span>
+            </span>
+            <span style="font-style: italic; font-weight: bold; margin-left: 2px;">t</span>
+        </div>
+
+        <!-- 下层：中文标注 -->
+        <div style="font-size: 13px; font-family: 'Segoe UI', system-ui, sans-serif; font-weight: bold; margin-top: 2px;">
+            (坐标系位移)
+        </div>
+
+    </div>
+
+    <!-- 坐标轴标签 -->
+    <div id="label-axis-x" class="floating-label tag-axis-k">x</div>
+    <div id="label-axis-y" class="floating-label tag-axis-k">y</div>
+    <div id="label-axis-z" class="floating-label tag-axis-k">z</div>
+    <div id="label-axis-xprime" class="floating-label tag-axis-kprime">x'</div>
+    <div id="label-axis-yprime" class="floating-label tag-axis-kprime">y'</div>
+    <div id="label-axis-zprime" class="floating-label tag-axis-kprime">z'</div>
+
+    <div id="control-panel">
+        <div class="header">
+            <h1>伽利略坐标变换</h1>
+            <p class="subtitle">直观展示两坐标系与质点位置矢量关系</p>
+        </div>
+
+        <!-- 启发式互动按钮 -->
+        <button id="btn-reveal" class="reveal-btn">矢量关系？</button>
+
+        <!-- 初始被隐藏的公式框 -->
+        <div class="formula-box" id="formula-box">
+            <!-- 标准数学矢量排版结构 -->
+            <div class="formula-row">
+                <span class="vec-box c-op">
+                    <span class="vec-arrow">→</span><span class="vec-letters">OP</span>
+                </span>
+                <span style="color:#fff;">=</span>
+                <span class="vec-box c-oop">
+                    <span class="vec-arrow">→</span><span class="vec-letters">OO'</span>
+                </span>
+                <span style="color:#fff;">+</span>
+                <span class="vec-box c-opp">
+                    <span class="vec-arrow">→</span><span class="vec-letters">O'P</span>
+                </span>
+            </div>
+            <!-- 第二行：体现 r = R + r' 的简写形式 -->
+            <div class="formula-row" style="margin-top: 8px; font-size: 16px;">
+                <span class="vec-box c-op"><span class="vec-arrow">→</span><span class="vec-letters">r</span></span>
+                <span style="color:#fff;">=</span>
+                <span class="vec-box c-oop"><span class="vec-arrow">→</span><span class="vec-letters">R</span></span>
+                <span style="color:#fff;">+</span>
+                <span class="vec-box c-opp"><span class="vec-arrow">→</span><span class="vec-letters">r'</span></span>
+            </div>
+            <div style="font-size: 12px; font-family: 'Segoe UI', sans-serif; font-weight: normal; color: #94a3b8; margin-top: 10px;">
+                ( 绝对位矢 = 坐标系位移 + 相对位矢 )
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div class="label-row">
+                <span style="color: var(--frame-k-prime); font-weight: bold;">拖动: 经过时间 t (匀速 V = 1 m/s)</span>
+                <!-- 显示时间读数，单位 s -->
+                <span id="slider-val" style="font-family: monospace; font-size: 14px; color: #facc15;">0.0 s</span>
+            </div>
+            <!-- 滑块现在控制时间 t -->
+            <input type="range" id="time-t" min="0" max="8" step="0.1" value="0">
+        </div>
+
+        <div class="data-card k-frame">
+            <div><strong>在静止系 K (O-xyz) 中观测：</strong></div>
+            <div class="coord-row">
+                <span>坐标 (x, y, z):</span>
+                <span id="coord-k">5.0m, 4.0m, 3.0m</span>
+            </div>
+        </div>
+
+        <div class="data-card k-prime-frame">
+            <div style="color: var(--frame-k-prime);"><strong>在运动系 K' (O'-x'y'z') 中观测：</strong></div>
+            <div class="coord-row">
+                <span>坐标 (x', y', z'):</span>
+                <span id="coord-k-prime" style="color: var(--frame-k-prime);">5.0m, 4.0m, 3.0m</span>
+            </div>
+            <div style="margin-top: 8px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 4px; color:#cbd5e1; font-size:12px;">
+                x' = x - Vt &nbsp;&nbsp;<em>(体现平动变换)</em>
+            </div>
+        </div>
+    </div>
+
+    <div id="hint">左键旋转视角 | 滚轮缩放 | 右键平移</div>
+
+    <script>
+        // --- UI 交互逻辑：揭示公式 ---
+        const btnReveal = document.getElementById('btn-reveal');
+        const formulaBox = document.getElementById('formula-box');
+
+        btnReveal.addEventListener('click', () => {
+            btnReveal.style.display = 'none';
+            formulaBox.style.display = 'block';
+            formulaBox.style.animation = 'fadeInDown 0.4s ease forwards';
+        });
+
+        // --- 1. 场景基础初始化 ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(6, 8, 15);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.set(3, 2, 0);
+
+        // 灯光与网格底盘
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+        
+        const gridHelper = new THREE.GridHelper(20, 20, 0x1e293b, 0x1e293b);
+        gridHelper.position.y = -0.01;
+        scene.add(gridHelper);
+
+        // --- 2. 核心物理对象构建 ---
+        
+        // P 点在 K 系中的绝对坐标 (固定不变)，默认单位：米(m)
+        const pointP = new THREE.Vector3(5, 4, 3);
+        
+        const pGeo = new THREE.SphereGeometry(0.15, 32, 32);
+        const pMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const pMesh = new THREE.Mesh(pGeo, pMat);
+        pMesh.position.copy(pointP);
+        scene.add(pMesh);
+
+        function createCoordinateSystem(color, length = 6, isDashed = false) {
+            const group = new THREE.Group();
+            const mat = isDashed ? 
+                new THREE.LineDashedMaterial({ color: color, dashSize: 0.2, gapSize: 0.1 }) : 
+                new THREE.LineBasicMaterial({ color: color });
+            
+            const axes =[
+                { dir: new THREE.Vector3(1,0,0), name: 'X' },
+                { dir: new THREE.Vector3(0,1,0), name: 'Y' },
+                { dir: new THREE.Vector3(0,0,1), name: 'Z' }
+            ];
+
+            axes.forEach(axis => {
+                const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), axis.dir.clone().multiplyScalar(length)]);
+                const line = new THREE.Line(geo, mat);
+                if(isDashed) line.computeLineDistances();
+                group.add(line);
+                
+                const coneGeo = new THREE.ConeGeometry(0.1, 0.3, 8);
+                const coneMat = new THREE.MeshBasicMaterial({ color: color });
+                const cone = new THREE.Mesh(coneGeo, coneMat);
+                cone.position.copy(axis.dir.clone().multiplyScalar(length));
+                if(axis.name === 'X') cone.rotation.z = -Math.PI / 2;
+                if(axis.name === 'Z') cone.rotation.x = Math.PI / 2;
+                group.add(cone);
+            });
+            return group;
+        }
+
+        // K 系和 K' 系
+        const frameK = createCoordinateSystem(0x94a3b8, 7);
+        scene.add(frameK);
+        const frameKPrime = createCoordinateSystem(0xfacc15, 6, true);
+        scene.add(frameKPrime);
+
+        // 核心位矢箭头
+        function createVectorArrow(color) {
+            const arrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, color, 0.4, 0.3);
+            arrow.line.material.linewidth = 3; 
+            return arrow;
+        }
+        
+        const arrowOP = createVectorArrow(0xef4444);  // 绝对位矢
+        const arrowOPprime = createVectorArrow(0x10b981); // 相对位矢
+        const arrowOOprime = createVectorArrow(0x3b82f6); // 平动位移
+        
+        scene.add(arrowOP);
+        scene.add(arrowOPprime);
+        scene.add(arrowOOprime);
+
+        arrowOP.position.set(0,0,0);
+        arrowOP.setDirection(pointP.clone().normalize());
+        arrowOP.setLength(pointP.length());
+
+        // --- 3. 交互与动态更新逻辑 ---
+        const sliderTime = document.getElementById('time-t');
+        const dispVal = document.getElementById('slider-val');
+        const coordK = document.getElementById('coord-k');
+        const coordKPrime = document.getElementById('coord-k-prime');
+
+        const lblO = document.getElementById('label-o');
+        const lblOprime = document.getElementById('label-oprime');
+        const lblP = document.getElementById('label-p');
+        const lblVecOP = document.getElementById('label-vec-op');
+        const lblVecOPP = document.getElementById('label-vec-opp');
+        const lblVecOOP = document.getElementById('label-vec-oop');
+
+        const lblAxisX = document.getElementById('label-axis-x');
+        const lblAxisY = document.getElementById('label-axis-y');
+        const lblAxisZ = document.getElementById('label-axis-z');
+        const lblAxisXprime = document.getElementById('label-axis-xprime');
+        const lblAxisYprime = document.getElementById('label-axis-yprime');
+        const lblAxisZprime = document.getElementById('label-axis-zprime');
+
+        // 系统设定 K' 系的匀速运动速度 V = 1.0 m/s
+        const velocity = 1.0; 
+
+        function updateSimulation() {
+            // 获取时间 t (单位：s)
+            const timeT = parseFloat(sliderTime.value);
+            // 计算平移位移 Vt (单位：m)
+            const vt = velocity * timeT;
+            
+            // 1. 更新 K' 坐标系位置
+            const posOprime = new THREE.Vector3(vt, 0, 0);
+            frameKPrime.position.copy(posOprime);
+
+            // 2. 更新相对位矢 O'P
+            const vecOprimeP = new THREE.Vector3().subVectors(pointP, posOprime);
+            arrowOPprime.position.copy(posOprime);
+            arrowOPprime.setDirection(vecOprimeP.clone().normalize());
+            arrowOPprime.setLength(vecOprimeP.length());
+
+            // 3. 更新系统平移位矢 R (即 OO')
+            if (vt > 0.05) {
+                arrowOOprime.visible = true;
+                arrowOOprime.position.set(0,0,0);
+                arrowOOprime.setDirection(new THREE.Vector3(1,0,0));
+                arrowOOprime.setLength(vt);
+            } else {
+                arrowOOprime.visible = false;
+            }
+
+            // 4. 更新UI面板 (读数体现运动学特征)
+            dispVal.innerText = timeT.toFixed(1) + ' s';
+            coordK.innerText = `${pointP.x.toFixed(1)}m, ${pointP.y.toFixed(1)}m, ${pointP.z.toFixed(1)}m`;
+            coordKPrime.innerText = `${(pointP.x - vt).toFixed(1)}m, ${pointP.y.toFixed(1)}m, ${pointP.z.toFixed(1)}m`;
+            
+            window.currentPosOprime = posOprime;
+            window.currentVecOprimeP = vecOprimeP;
+        }
+
+        function updateLabels() {
+            if(!window.currentPosOprime) return;
+            
+            toScreenPosition(new THREE.Vector3(0, -0.3, 0), lblO);
+            toScreenPosition(new THREE.Vector3(pointP.x, pointP.y + 0.4, pointP.z), lblP);
+            toScreenPosition(new THREE.Vector3(window.currentPosOprime.x, -0.4, 0), lblOprime);
+
+            // 挂载矢量文字
+            const midOP = pointP.clone().multiplyScalar(0.5);
+            toScreenPosition(midOP, lblVecOP);
+
+            const midOPP = window.currentPosOprime.clone().add(window.currentVecOprimeP.clone().multiplyScalar(0.5));
+            toScreenPosition(midOPP, lblVecOPP);
+
+            // R = Vt 等式标签，挂靠在平移矢量中点，稍微抬高一点防止被轴挡住
+            const midOOP = new THREE.Vector3(window.currentPosOprime.x / 2, 0.4, 0);
+            if(window.currentPosOprime.x > 0.5) {
+                lblVecOOP.style.display = 'flex';
+                toScreenPosition(midOOP, lblVecOOP);
+            } else {
+                lblVecOOP.style.display = 'none';
+            }
+
+            // 更新坐标轴字母标识
+            const offsetK = 7.5;
+            toScreenPosition(new THREE.Vector3(offsetK, 0, 0), lblAxisX);
+            toScreenPosition(new THREE.Vector3(0, offsetK, 0), lblAxisY);
+            toScreenPosition(new THREE.Vector3(0, 0, offsetK), lblAxisZ);
+
+            const vt = window.currentPosOprime.x;
+            const offsetKprime = 6.5;
+            toScreenPosition(new THREE.Vector3(vt + offsetKprime, 0, 0), lblAxisXprime);
+            toScreenPosition(new THREE.Vector3(vt, offsetKprime, 0), lblAxisYprime);
+            toScreenPosition(new THREE.Vector3(vt, 0, offsetKprime), lblAxisZprime);
+        }
+
+        function toScreenPosition(vector3D, element) {
+            const vector = vector3D.clone();
+            vector.project(camera);
+            if (vector.z > 1) {
+                element.style.opacity = '0';
+                return;
+            }
+            const x = Math.round((0.5 + vector.x / 2) * window.innerWidth);
+            const y = Math.round((0.5 - vector.y / 2) * window.innerHeight);
+            element.style.opacity = '1';
+            element.style.left = x + 'px';
+            element.style.top = y + 'px';
+        }
+
+        sliderTime.addEventListener('input', updateSimulation);
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            updateLabels();
+            renderer.render(scene, camera);
+        }
+
+        updateSimulation();
+        animate();
+    </script>
+</body>
+</html>

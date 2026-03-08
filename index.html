@@ -8,25 +8,100 @@
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
 <style>
-/* 核心布局调整：主内容+右侧面板 */
+/* 核心布局调整：左侧导图 + 主内容 + 右侧面板 */
 body {
     margin: 0;
     padding: 0;
     font-family: "Microsoft YaHei", sans-serif;
     background: url('background.png') center/cover no-repeat fixed;
+    background-color: #f0f4f8; /* 备用背景色 */
     display: flex;
     min-height: 100vh;
     overflow-x: hidden;
 }
-/* 左侧主内容区 */
+
+/* ================= 左侧思维导图分栏 ================= */
+.left-sidebar {
+    width: 320px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 2px 0 15px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 50;
+    border-right: 3px solid #08306b;
+    overflow-y: auto;
+}
+.mindmap-header {
+    background: #08306b;
+    color: white;
+    padding: 20px;
+    text-align: center;
+    font-size: 22px;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+.mindmap-content {
+    padding: 20px 15px;
+}
+/* 树状图样式 */
+.tree-ul {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+.tree-ul ul {
+    list-style: none;
+    padding-left: 20px;
+    border-left: 2px dashed #b0c4de;
+    margin-left: 10px;
+    margin-top: 5px;
+    margin-bottom: 15px;
+}
+.tree-node {
+    padding: 10px;
+    margin: 4px 0;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+}
+.tree-node:hover {
+    background: rgba(8, 48, 107, 0.08);
+}
+.node-part {
+    font-size: 18px;
+    font-weight: bold;
+    color: #08306b;
+}
+.node-chapter {
+    font-size: 15px;
+    color: #444;
+}
+/* 高亮激活状态 */
+.tree-node.active {
+    color: #d32f2f;
+    font-weight: bold;
+    background: rgba(211, 47, 47, 0.08);
+    box-shadow: -4px 0 0 #d32f2f;
+}
+.tree-node.active.node-part {
+    color: #c62828;
+    box-shadow: -4px 0 0 #c62828;
+}
+
+/* ================= 左侧主内容区 ================= */
 .main-content {
     flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     padding: 20px;
+    position: relative;
 }
-/* 右侧面板（默认隐藏） */
+
+/* ================= 右侧面板 ================= */
 .sidebar-panel {
     width: 0;
     height: 100vh;
@@ -41,12 +116,10 @@ body {
     flex-direction: column;
     box-shadow: -4px 0 20px rgba(0,0,0,0.15);
 }
-/* 右侧面板展开状态 */
 .sidebar-panel.open {
     width: 900px;
     padding: 20px;
 }
-/* 面板标题栏 */
 .panel-header {
     display: flex;
     justify-content: space-between;
@@ -77,74 +150,87 @@ body {
 .close-panel:hover {
     background: #0a408b;
 }
-/* 面板内容区 */
 .panel-body {
     flex: 1;
-    overflow: auto;
+    overflow-y: auto;
+    padding-right: 10px;
 }
 
-.logo { position:absolute; top:20px; left:30px; font-size:14px; color:white; line-height:1.6; z-index: 10; }
-.title { font-size:64px; font-weight:700; color:white; text-align:center; letter-spacing:4px; margin:0 0 40px 0; }
+/* ================= 主体通用样式 ================= */
+.logo { position:absolute; top:20px; left:30px; font-size:14px; color:white; line-height:1.6; z-index: 10; text-shadow: 1px 1px 3px rgba(0,0,0,0.5); }
+.title { font-size:54px; font-weight:700; color:white; text-align:center; letter-spacing:4px; margin:0 0 40px 0; text-shadow: 2px 2px 6px rgba(0,0,0,0.6); }
 .center-container { display:flex; flex-direction:column; justify-content:center; align-items:center; flex:1; width:100%; }
-.main-menu, .sub-menu { display:grid; grid-template-columns:300px 300px; gap:40px 60px; justify-content:center; margin-top:20px; }
-/* 调整运动学按钮布局：4个按钮分两行，每行两个 */
-.section-menu { display:grid; grid-template-columns:300px 300px; gap:40px 60px; justify-content:center; margin-top:20px; }
-button { width:300px; height:140px; font-size:26px; font-weight:600; border-radius:18px; border:none; background:#D3D3D3; color:black; cursor:pointer; transition:all 0.3s ease; box-shadow:0 8px 22px rgba(0,0,0,0.18); display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.4;}
+.main-menu, .sub-menu, .section-menu { display:grid; grid-template-columns:300px 300px; gap:40px 60px; justify-content:center; margin-top:20px; }
+button { width:300px; height:120px; font-size:24px; font-weight:600; border-radius:18px; border:none; background:rgba(211,211,211,0.9); color:black; cursor:pointer; transition:all 0.3s ease; box-shadow:0 8px 22px rgba(0,0,0,0.18); display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.4;}
 button:hover { background:#08306b; color:white; transform:translateY(-6px); box-shadow:0 12px 28px rgba(0,0,0,0.25); }
-.back-btn { background:#555; color:white; width:180px; height:60px; font-size:20px; margin-top:20px; }
-.page { display:none; flex-direction:column; align-items:center; justify-content:center; flex:1; width:100%; text-align:center; padding-bottom:80px; }
+.back-btn { background:rgba(85,85,85,0.9); color:white; width:180px; height:60px; font-size:20px; margin-top:40px; }
+.page { display:none; flex-direction:column; align-items:center; justify-content:center; flex:1; width:100%; text-align:center; padding-bottom:40px; }
+
+/* 知识框架样式 */
 .knowledge-graph { display:flex; max-width:1000px; width:90%; margin-top:40px; }
-.vertical-title { writing-mode: vertical-rl; text-orientation: mixed; font-size:48px; font-weight:bold; color:#003C8F; margin-right:20px; }
-.bracket-container { position:relative; flex:1; }
-.bracket { border-left:6px solid white; height:350px; position:absolute; left:0; top:0; }
+.vertical-title { writing-mode: vertical-rl; text-orientation: mixed; font-size:42px; font-weight:bold; color:white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-right:30px; }
+.bracket-container { position:relative; flex:1; text-align:left; }
+.bracket { border-left:6px solid white; height:100%; position:absolute; left:0; top:0; box-shadow: -2px 0 4px rgba(0,0,0,0.2); }
 .content-box { margin-left:40px; }
 .section { background:rgba(255,255,255,0.95); padding:15px 20px; border-radius:12px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
-.section h3 { margin-top:0; cursor:pointer; color:#08306b; }
-.subcontent { display:none; margin-top:10px; padding-left:15px; font-size:18px; }
-/* 仿真按钮样式 */
-.external-btn {
-    background: #08306b;
-    color: white;
-    width: 300px;
-    height: 80px;
-    font-size: 22px;
-    margin-top: 20px;
-}
-.external-btn:hover {
-    background: #0a408b;
-    transform: translateY(-4px);
-}
-/* 按钮间距调整 */
-.btn-group {
-    display: grid;
-    grid-template-columns: 300px 300px;
-    gap: 30px;
-    margin-bottom: 20px;
-}
-/* PPT和视频展示样式 */
-.ppt-frame {
-    width: 100%;
-    height: calc(100vh - 120px);
-    border: none;
-    border-radius: 8px;
-}
-.video-player {
-    width: 100%;
-    height: calc(100vh - 120px);
-    border: none;
-    border-radius: 8px;
-}
+.section h3 { margin-top:0; margin-bottom:0; cursor:pointer; color:#08306b; display: flex; justify-content: space-between; align-items: center;}
+.section h3::after { content: "▼"; font-size: 14px; color: #888; }
+.subcontent { display:none; margin-top:15px; padding-left:15px; font-size:18px; border-top: 1px dashed #ccc; padding-top: 10px;}
+.subcontent ul { margin: 5px 0; padding-left: 20px;}
+.subcontent li { margin-bottom: 8px; }
+
+/* 仿真与视频展示样式 */
+.external-btn { background: #08306b; color: white; width: 340px; height: 90px; font-size: 20px; }
+.external-btn:hover { background: #0a408b; }
+/* 优化按钮组布局：改为flex弹性换行居中排列，适配奇数或偶数个按钮 (4个按钮会完美2x2排列) */
+.btn-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 40px; max-width: 800px; margin-bottom: 20px; }
+.ppt-frame { width: 100%; height: calc(100vh - 120px); border: none; border-radius: 8px; }
+
+/* ================= 多视频折叠列表样式 ================= */
+.video-list-item { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 15px; overflow: hidden; }
+.video-title-bar { padding: 18px 20px; background: #e9ecef; cursor: pointer; font-size: 20px; font-weight: bold; color: #08306b; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s; }
+.video-title-bar:hover { background: #dce1e6; }
+.video-title-bar::after { content: "▶"; font-size: 16px; color: #666; transition: transform 0.3s; }
+.video-list-item.open .video-title-bar::after { transform: rotate(90deg); }
+.video-player-container { display: none; padding: 15px; background: #fff; border-top: 1px solid #dee2e6; }
+.video-player { width: 100%; border-radius: 6px; background: #000; outline: none; }
 </style>
 
 <script>
+// 思维导图联动映射表 (页面ID 对应 左侧节点的ID数组)
+const mindmapMapping = {
+    'home':[],
+    'mechanics':['node-part1'],
+    'kinematics':['node-part1', 'node-ch1'],
+    'kinTheory':['node-part1', 'node-ch1'],
+    'kinematicsSimulation': ['node-part1', 'node-ch1']
+};
+
+function updateMindmapHighlight(pageId) {
+    // 移除所有高亮
+    document.querySelectorAll('.tree-node').forEach(el => el.classList.remove('active'));
+    // 添加当前页面对应的高亮
+    const activeNodes = mindmapMapping[pageId];
+    if (activeNodes) {
+        activeNodes.forEach(nodeId => {
+            const el = document.getElementById(nodeId);
+            if (el) el.classList.add('active');
+        });
+    }
+}
+
 function showPage(id) {
     let pages = document.getElementsByClassName("page");
     for (let p of pages) p.style.display = "none";
     let page = document.getElementById(id);
     page.style.display = "flex";
+    
+    // 触发左侧导图高亮更新
+    updateMindmapHighlight(id);
+    
     // 延迟 MathJax 渲染
     setTimeout(() => MathJax.typesetPromise([page]), 50);
-    // 关闭右侧面板（切换页面时自动关闭）
+    // 关闭右侧面板
     closeSidebarPanel();
 }
 
@@ -157,65 +243,97 @@ function toggleSubcontent(id) {
     MathJax.typesetPromise([el]);
 }
 
-// 新增：打开三维仿真页面（位矢/位移/路程）
-function open3dTrajectorySimulation() {
-    window.open('3d_kinematics.html', '_blank', 'width=1200,height=800');
-}
-
-// 新增：打开三维仿真页面（速度/速率/加速度）
-function open3dKinematicsSimulation() {
-    window.open('physics_3d_kinematics.html', '_blank', 'width=1200,height=800');
-}
+// ---------------- 新窗口仿真调用方法 ----------------
+// 1. 三维轨迹仿真
+function open3dTrajectorySimulation() { window.open('3d_kinematics.html', '_blank', 'width=1200,height=800'); }
+// 2. 三维速度/加速度仿真
+function open3dKinematicsSimulation() { window.open('physics_3d_kinematics.html', '_blank', 'width=1200,height=800'); }
+// 3. 相对风速综合推演
+function openWindSpeedSimulation() { window.open('wind_speed_simulation.html', '_blank', 'width=1200,height=800'); }
+// 4. 伽利略坐标变换动态推演
+function openGalileoTransformSimulation() { window.open('relative_movement.html', '_blank', 'width=1200,height=800'); }
 
 // ====================== 右侧面板核心功能 ======================
-// 打开右侧面板
 function openSidebarPanel(type) {
     const panel = document.getElementById('sidebarPanel');
     const panelBody = document.getElementById('panelBody');
     const panelTitle = document.getElementById('panelTitle');
     
-    // 清空面板内容
-    panelBody.innerHTML = '';
+    panelBody.innerHTML = ''; // 清空面板
     
-    // 根据类型加载不同内容
     if (type === 'ppt') {
         panelTitle.textContent = '运动学课件';
-        // 添加PPT预览iframe
         const iframe = document.createElement('iframe');
         iframe.className = 'ppt-frame';
-        iframe.src = '第一章 运动学.pdf';
+        iframe.src = '第一章 运动学.pdf'; // 请确保当前目录下有此文件
         iframe.title = '运动学课件';
         panelBody.appendChild(iframe);
-    } else if (type === 'video') {
+    } 
+    else if (type === 'video') {
         panelTitle.textContent = '运动学教学视频';
-        // 添加视频播放器
-        const video = document.createElement('video');
-        video.className = 'video-player';
-        video.controls = true;
         
-        const source = document.createElement('source');
-        source.src = 'kinematics_video.mp4';
-        source.type = 'video/mp4';
-        
-        video.appendChild(source);
-        // 兼容提示
-        const fallbackText = document.createTextNode('您的浏览器不支持HTML5视频播放，请更新浏览器！');
-        video.appendChild(fallbackText);
-        
-        panelBody.appendChild(video);
+        const videoData =[
+            { title: "1.1 质点运动的描述 (基本概念1)", src: "质点的运动1.mp4" },
+            { title: "1.1 质点运动的描述 (基本概念2)", src: "质点的运动2.mp4" },
+            { title: "1.1 质点运动的描述 (基本概念3)", src: "质点的运动3.mp4" },
+            { title: "1.2 圆周运动和一般曲线运动1", src: "圆周运动1.mp4" },
+            { title: "1.2 圆周运动和一般曲线运动2", src: "圆周运动2.mp4" },
+            { title: "1.3 相对运动1", src: "相对运动1.mp4" },
+            { title: "1.3 相对运动2", src: "相对运动2.mp4" }
+        ];
+
+        // 动态生成折叠视频列表
+        videoData.forEach((itemData, index) => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'video-list-item';
+
+            const titleBar = document.createElement('div');
+            titleBar.className = 'video-title-bar';
+            titleBar.textContent = itemData.title;
+
+            const playerContainer = document.createElement('div');
+            playerContainer.className = 'video-player-container';
+
+            const videoEl = document.createElement('video');
+            videoEl.className = 'video-player';
+            videoEl.controls = true;
+            const sourceEl = document.createElement('source');
+            sourceEl.src = itemData.src; // 绑定真实视频路径
+            sourceEl.type = 'video/mp4';
+            videoEl.appendChild(sourceEl);
+            playerContainer.appendChild(videoEl);
+
+            // 点击展开/收起及播放逻辑
+            titleBar.onclick = () => {
+                const isOpen = itemDiv.classList.contains('open');
+                if (isOpen) {
+                    itemDiv.classList.remove('open');
+                    playerContainer.style.display = 'none';
+                    videoEl.pause(); // 收起时自动暂停
+                } else {
+                    itemDiv.classList.add('open');
+                    playerContainer.style.display = 'block';
+                }
+            };
+
+            itemDiv.appendChild(titleBar);
+            itemDiv.appendChild(playerContainer);
+            panelBody.appendChild(itemDiv);
+        });
     }
     
-    // 展开面板
     panel.classList.add('open');
 }
 
-// 关闭右侧面板
 function closeSidebarPanel() {
     const panel = document.getElementById('sidebarPanel');
     panel.classList.remove('open');
+    // 停止所有正在播放的视频
+    const videos = document.querySelectorAll('#panelBody video');
+    videos.forEach(v => v.pause());
 }
 
-// 点击面板外部关闭（可选）
+// 点击面板外部关闭
 document.addEventListener('click', function(e) {
     const panel = document.getElementById('sidebarPanel');
     const isClickInsidePanel = panel.contains(e.target);
@@ -225,21 +343,58 @@ document.addEventListener('click', function(e) {
         closeSidebarPanel();
     }
 });
-
-document.addEventListener("DOMContentLoaded", function(){
-    // 初始化原有仿真（保留）
-    // initKinematicsSimulation();
-});
 </script>
-
 </head>
-<body>
-<!-- 左侧主内容区 -->
+
+<body onload="showPage('home')">
+
+<!-- ================= 左侧思维导图导航 ================= -->
+<div class="left-sidebar">
+    <div class="mindmap-header">大学物理知识导图</div>
+    <div class="mindmap-content">
+        <ul class="tree-ul">
+            <!-- 第一篇 -->
+            <li class="tree-node node-part" id="node-part1" onclick="showPage('mechanics')">第一篇 力学</li>
+            <ul>
+                <li class="tree-node node-chapter" id="node-ch1" onclick="showPage('kinematics')">第1章 运动学</li>
+                <li class="tree-node node-chapter" onclick="alert('质点动力学模块待完善')">第2章 质点（系）动力学</li>
+                <li class="tree-node node-chapter" onclick="alert('刚体动力学模块待完善')">第3章 刚体动力学</li>
+                <li class="tree-node node-chapter" onclick="alert('机械振动与波模块待完善')">第5章 机械振动和机械波</li>
+            </ul>
+
+            <!-- 第二篇 -->
+            <li class="tree-node node-part" id="node-part2" onclick="alert('气体动理论和热力学基础模块待完善')">第二篇 气体动理论和热力学基础</li>
+            <ul>
+                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第6章 气体动理论基础</li>
+                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第7章 热力学基础</li>
+            </ul>
+
+            <!-- 第三篇 -->
+            <li class="tree-node node-part" id="node-part3" onclick="alert('电磁学模块待完善')">第三篇 电磁学</li>
+            <ul>
+                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第8章 真空中的静电场</li>
+                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第9章 静电场中的导体</li>
+                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第10章 恒定电流和恒定磁场</li>
+                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第12章 电磁感应</li>
+            </ul>
+
+            <!-- 第四篇 -->
+            <li class="tree-node node-part" id="node-part4" onclick="alert('光学模块待完善')">第四篇 光学</li>
+            <ul>
+                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第14章 光的干涉</li>
+                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第15章 光的衍射</li>
+                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第16章 光的偏振</li>
+            </ul>
+        </ul>
+    </div>
+</div>
+
+<!-- ================= 主内容区 ================= -->
 <div class="main-content">
     <div class="logo">淮北师范大学<br>Huaibei Normal University</div>
 
     <!-- 首页 -->
-    <div id="home" class="page" style="display:flex;">
+    <div id="home" class="page">
         <div class="center-container">
             <div class="title">大学物理教学与自主学习平台</div>
             <div class="main-menu">
@@ -254,28 +409,28 @@ document.addEventListener("DOMContentLoaded", function(){
     <!-- 力学模块 -->
     <div id="mechanics" class="page">
         <div class="center-container">
-            <div class="title">力学模块</div>
+            <div class="title">第一篇 力学</div>
             <div class="sub-menu">
-                <button onclick="showPage('kinematics')">运动学</button>
-                <button onclick="alert('质点动力学模块待完善')">质点（系）动力学</button>
-                <button onclick="alert('刚体动力学模块待完善')">刚体动力学</button>
-                <button onclick="alert('机械振动与波模块待完善')">机械振动与机械波</button>
+                <button onclick="showPage('kinematics')">第1章 运动学</button>
+                <button onclick="alert('质点动力学模块待完善')">第2章 质点（系）动力学</button>
+                <button onclick="alert('刚体动力学模块待完善')">第3章 刚体动力学</button>
+                <button onclick="alert('机械振动与波模块待完善')">第5章 机械振动和机械波</button>
             </div>
             <button class="back-btn" onclick="goHome()">返回首页</button>
         </div>
     </div>
 
-    <!-- 运动学模块（核心修改：按钮点击打开右侧面板） -->
+    <!-- 运动学模块 -->
     <div id="kinematics" class="page">
         <div class="center-container">
-            <div class="title">运动学</div>
+            <div class="title">第1章 运动学</div>
             <div class="section-menu">
                 <button onclick="showPage('kinTheory')">理论知识框架</button>
-                <button onclick="openSidebarPanel('ppt')">课件</button>
+                <button onclick="openSidebarPanel('ppt')">教学课件</button>
                 <button onclick="showPage('kinematicsSimulation')">仿真交互模型</button>
                 <button onclick="openSidebarPanel('video')">教学视频</button>
             </div>
-            <button class="back-btn" onclick="goBack('mechanics')">返回力学</button>
+            <button class="back-btn" onclick="goBack('mechanics')">返回力学篇</button>
         </div>
     </div>
 
@@ -289,7 +444,7 @@ document.addEventListener("DOMContentLoaded", function(){
                     <div class="bracket"></div>
                     <div class="content-box">
                         <div class="section">
-                            <h3 onclick="toggleSubcontent('sub1')">质点运动的描述</h3>
+                            <h3 onclick="toggleSubcontent('sub1')">1. 质点运动的描述</h3>
                             <div class="subcontent" id="sub1">
                                 <ul>
                                     <li>位置矢量：\( \vec{r}(t) \)</li>
@@ -299,19 +454,19 @@ document.addEventListener("DOMContentLoaded", function(){
                             </div>
                         </div>
                         <div class="section">
-                            <h3 onclick="toggleSubcontent('sub2')">直线 / 圆周 / 曲线运动</h3>
+                            <h3 onclick="toggleSubcontent('sub2')">2. 直线 / 圆周 / 曲线运动</h3>
                             <div class="subcontent" id="sub2">
-                                <h4>直线运动</h4>
+                                <b>直线运动</b>
                                 <ul>
                                     <li>匀速：\( v = v_0 \)</li>
                                     <li>匀加速：\( v = v_0 + a t, \quad s = v_0 t + \frac{1}{2} a t^2 \)</li>
                                 </ul>
-                                <h4>圆周运动</h4>
+                                <b>圆周运动</b>
                                 <ul>
                                     <li>角速度：\( \omega = \frac{d\theta}{dt} \)</li>
                                     <li>向心加速度：\( a_c = \frac{v^2}{r} \)</li>
                                 </ul>
-                                <h4>一般曲线运动</h4>
+                                <b>一般曲线运动</b>
                                 <ul>
                                     <li>切向加速度：\( a_t \)</li>
                                     <li>法向加速度：\( a_n \)</li>
@@ -320,11 +475,12 @@ document.addEventListener("DOMContentLoaded", function(){
                             </div>
                         </div>
                         <div class="section">
-                            <h3 onclick="toggleSubcontent('sub3')">相对运动</h3>
+                            <h3 onclick="toggleSubcontent('sub3')">3. 相对运动</h3>
                             <div class="subcontent" id="sub3">
                                 <ul>
-                                    <li>相对速度：\( \vec{v}_{AB} = \vec{v}_A - \vec{v}_B \)</li>
-                                    <li>常用场景：移动参考系下的质点运动分析</li>
+                                    <li>绝对速度 = 相对速度 + 牵连速度</li>
+                                    <li>速度变换公式：\( \vec{v}_{绝对} = \vec{v}_{相对} + \vec{v}_{牵连} \)</li>
+                                    <li>伽利略坐标变换</li>
                                 </ul>
                             </div>
                         </div>
@@ -339,29 +495,37 @@ document.addEventListener("DOMContentLoaded", function(){
     <div id="kinematicsSimulation" class="page">
         <div class="center-container">
             <div class="title">运动学仿真交互模型</div>
-
+            
+            <!-- 现包含 4 个按钮，呈 2x2 完美网格居中排列 -->
             <div class="btn-group">
                 <button class="external-btn" onclick="open3dTrajectorySimulation()">
-                    三维曲线运动仿真（位矢/位移/路程）
+                    三维曲线运动仿真<br><span style="font-size: 16px; font-weight: normal;">(位矢 / 位移 / 路程)</span>
                 </button>
                 <button class="external-btn" onclick="open3dKinematicsSimulation()">
-                    三维曲线运动仿真（速度/速率/加速度）
+                    三维曲线运动仿真<br><span style="font-size: 16px; font-weight: normal;">(速度 / 速率 / 加速度)</span>
+                </button>
+                <button class="external-btn" onclick="openWindSpeedSimulation()">
+                    相对运动仿真<br><span style="font-size: 16px; font-weight: normal;">(风速矢量合成推演)</span>
+                </button>
+                <!-- 新增：伽利略坐标变换动态推演 -->
+                <button class="external-btn" onclick="openGalileoTransformSimulation()">
+                    伽利略坐标变换<br><span style="font-size: 16px; font-weight: normal;">(坐标与位矢动态推演)</span>
                 </button>
             </div>
-
+            
             <button class="back-btn" onclick="goBack('kinematics')">返回运动学</button>
         </div>
     </div>
 </div>
 
-<!-- 右侧面板（默认隐藏） -->
+<!-- ================= 右侧弹出面板 (课件与视频) ================= -->
 <div id="sidebarPanel" class="sidebar-panel">
     <div class="panel-header">
         <h2 id="panelTitle" class="panel-title">面板标题</h2>
-        <button class="close-panel" onclick="closeSidebarPanel()">×</button>
+        <button class="close-panel" title="关闭面板" onclick="closeSidebarPanel()">×</button>
     </div>
     <div id="panelBody" class="panel-body">
-        <!-- 动态加载PPT/视频内容 -->
+        <!-- 内容由JS动态生成（视频列表/PDF课件） -->
     </div>
 </div>
 
