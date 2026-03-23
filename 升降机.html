@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>升降机螺帽相对运动精细化模拟</title>
+    <style>
+        :root { --accent: #00ffcc; --bg: #0f172a; }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: var(--bg); color: white; display: flex; }
+        
+        #sidebar { 
+            width: 380px; height: 100vh; background: rgba(30, 41, 59, 0.95); 
+            backdrop-filter: blur(10px); border-right: 1px solid #334155;
+            display: flex; flex-direction: column; z-index: 100;
+        }
+
+        .header { padding: 20px; border-bottom: 1px solid #334155; background: #1e293b; }
+        .content { flex: 1; padding: 20px; overflow-y: auto; scroll-behavior: smooth; }
+        .step { 
+            background: rgba(255,255,255,0.05); border-radius: 8px; padding: 15px; 
+            margin-bottom: 15px; border-left: 4px solid #475569; transition: 0.3s;
+            opacity: 0.4;
+        }
+        .step.active { opacity: 1; border-left-color: var(--accent); background: rgba(0, 255, 204, 0.1); }
+        
+        #canvas-container { flex: 1; position: relative; }
+        .controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; }
+        
+        button { 
+            padding: 12px 24px; cursor: pointer; border: none; border-radius: 6px; 
+            font-weight: bold; transition: 0.2s; background: #334155; color: white;
+        }
+        button.primary { background: var(--accent); color: #0f172a; }
+        button:hover { transform: translateY(-2px); filter: brightness(1.1); }
+        
+        .math { font-family: "Times New Roman", serif; font-style: italic; color: #cbd5e1; }
+        .highlight { color: var(--accent); font-weight: bold; }
+        .vector-label { position: absolute; background: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 3px; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div class="header">
+        <h2 style="margin:0; font-size: 1.2rem;">物理精细化建模</h2>
+        <div style="font-size: 0.8rem; color: #94a3b8; margin-top:5px;">螺帽自升降机脱落过程分析</div>
+    </div>
+    <div class="content" id="step-container">
+        <div class="step" id="step0">
+            <b>1. 初始状态 (t=0)</b><br>
+            <p class="math">v₀ = 2.44 m/s (共用)</p>
+            <p class="math">a_lift = 1.22 m/s² (向上)</p>
+            <p class="math">a_nut = g = 9.8 m/s² (向下)</p>
+        </div>
+        <div class="step" id="step1">
+            <b>2. 建立相对位移方程</b><br>
+            相对于升降机，螺帽做初速为0的匀加速运动：
+            <p class="math">a_rel = g + a_lift = 11.02 m/s²</p>
+            <p class="math">Δy_rel = 1/2 · a_rel · t²</p>
+        </div>
+        <div class="step" id="step2">
+            <b>3. 求解下落时间</b><br>
+            当相对位移等于高度 H = 2.74m 时：
+            <p class="math">2.74 = 0.5 · 11.02 · t²</p>
+            <p class="math">t ≈ <span class="highlight">0.705 s</span></p>
+        </div>
+        <div class="step" id="step3">
+            <b>4. 地面坐标位移</b><br>
+            考察螺帽相对于地面的竖直上抛：
+            <p class="math">y = v₀t - 1/2gt²</p>
+            <p class="math">y = 2.44(0.705) - 4.9(0.705)²</p>
+            <p class="math">y ≈ <span class="highlight">-0.71 m</span></p>
+        </div>
+    </div>
+</div>
+
+<div id="canvas-container">
+    <div class="controls">
+        <button id="prevBtn" onclick="changeStep(-1)">上一步</button>
+        <button class="primary" id="nextBtn" onclick="changeStep(1)">开始演示 / 下一步</button>
+        <button onclick="resetSim()">重置</button>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+    let scene, camera, renderer, lift, nut, arrowHelper, grid;
+    let currentStep = -1;
+    let time = 0;
+    let isMoving = false;
+
+    // 物理常量
+    const g = 9.8, a_lift = 1.22, v0 = 2.44, H = 2.74;
+    const dropTime = 0.705;
+
+    function init() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0f172a);
+        
+        camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 380) / window.innerHeight, 0.1, 1000);
+        camera.position.set(6, 2, 8);
+        camera.lookAt(0, 1, 0);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth - 380, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // 环境光与灯光
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 5);
+        scene.add(dirLight);
+
+        // 升降机
+        const liftGeo = new THREE.BoxGeometry(2.5, H, 2.5);
+        const liftMat = new THREE.MeshPhongMaterial({ 
+            color: 0x3b82f6, transparent: true, opacity: 0.3, wireframe: false 
+        });
+        lift = new THREE.Mesh(liftGeo, liftMat);
+        // 线框外壳
+        const edges = new THREE.EdgesGeometry(liftGeo);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x60a5fa }));
+        lift.add(line);
+        scene.add(lift);
+
+        // 螺帽
+        nut = new THREE.Mesh(
+            new THREE.SphereGeometry(0.12, 32, 32),
+            new THREE.MeshPhongMaterial({ color: 0xf59e0b, emissive: 0x78350f })
+        );
+        scene.add(nut);
+
+        // 速度矢量箭头
+        arrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0), 1, 0x00ffcc);
+        scene.add(arrowHelper);
+
+        // 初始位置线
+        const originGeo = new THREE.RingGeometry(1.4, 1.5, 32);
+        const originMat = new THREE.MeshBasicMaterial({ color: 0x475569, side: THREE.DoubleSide });
+        grid = new THREE.Mesh(originGeo, originMat);
+        grid.rotation.x = Math.PI/2;
+        grid.position.y = H/2; // 螺帽脱落的初始高度
+        scene.add(grid);
+
+        resetSim();
+        animate();
+    }
+
+    function resetSim() {
+        time = 0;
+        currentStep = -1;
+        isMoving = false;
+        updateUI();
+        lift.position.y = 0;
+        nut.position.set(0, H/2, 0);
+        arrowHelper.visible = false;
+        
+        // 重置所有步骤样式
+        document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+    }
+
+    function changeStep(dir) {
+        currentStep += dir;
+        if(currentStep < 0) currentStep = 0;
+        if(currentStep > 3) currentStep = 3;
+        
+        updateUI();
+
+        if(currentStep === 0) {
+            resetSim();
+            currentStep = 0;
+            document.getElementById('step0').classList.add('active');
+        } else if(currentStep >= 1) {
+            isMoving = true;
+            arrowHelper.visible = true;
+        }
+    }
+
+    function updateUI() {
+        document.querySelectorAll('.step').forEach((s, i) => {
+            s.classList.toggle('active', i === currentStep);
+            if(i === currentStep) s.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        });
+        
+        const btn = document.getElementById('nextBtn');
+        if(currentStep === -1) btn.innerText = "开始演示";
+        else if(currentStep === 3) btn.innerText = "演示完毕";
+        else btn.innerText = "下一步";
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        if (isMoving && time < dropTime) {
+            time += 0.008; // 模拟时间流逝
+
+            // 1. 计算位移
+            let y_lift = v0 * time + 0.5 * a_lift * Math.pow(time, 2);
+            let y_nut = v0 * time - 0.5 * g * Math.pow(time, 2) + (H/2);
+
+            // 2. 计算速度 (用于箭头方向)
+            let v_nut_ground = v0 - g * time;
+
+            // 3. 更新模型位置
+            lift.position.y = y_lift;
+            nut.position.y = y_nut;
+
+            // 4. 更新箭头
+            arrowHelper.position.copy(nut.position);
+            arrowHelper.setDirection(new THREE.Vector3(0, v_nut_ground > 0 ? 1 : -1, 0));
+            arrowHelper.setLength(Math.abs(v_nut_ground) * 0.5 + 0.2);
+            arrowHelper.setColor(v_nut_ground > 0 ? 0x00ffcc : 0xff4444);
+
+            // 5. 自动切换步骤逻辑
+            if(time > 0.3 && currentStep < 1) changeStep(1);
+            
+            // 落地停止
+            if (y_nut <= (y_lift - H/2)) {
+                time = dropTime;
+                nut.position.y = lift.position.y - H/2;
+                isMoving = false;
+            }
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = (window.innerWidth - 380) / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth - 380, window.innerHeight);
+    });
+
+    init();
+</script>
+</body>
+</html>

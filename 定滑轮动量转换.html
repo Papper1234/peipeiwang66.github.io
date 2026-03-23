@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>物理模型：带冲量的滑轮连接体</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: 'Segoe UI', Tahoma, Verdana, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; z-index: 1;}
+        
+        #ui-panel {
+            position: absolute; top: 20px; left: 20px; width: 450px;
+            background: rgba(15, 20, 25, 0.9); backdrop-filter: blur(10px);
+            color: #eee; padding: 25px; border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8); z-index: 10;
+            border: 1px solid #445; max-height: 90vh; overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+        
+        #ui-panel::-webkit-scrollbar { width: 6px; }
+        #ui-panel::-webkit-scrollbar-thumb { background: #556; border-radius: 3px; }
+
+        h2 { margin-top: 0; color: #4da6ff; font-size: 20px; border-bottom: 1px solid #445; padding-bottom: 10px;}
+        
+        .btn-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+        .stage-btn {
+            background: #2a4b7c; color: white; border: none; padding: 10px 0;
+            border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s;
+            flex: 1 1 30%; font-size: 13px; text-align: center; border: 1px solid #456;
+        }
+        .stage-btn:hover { background: #3b68ab; }
+        .stage-btn.active { background: #00ff88; color: #000; box-shadow: 0 0 12px rgba(0,255,136,0.6); border-color: #00ff88;}
+        
+        .btn-auto { flex: 1 1 100%; background: #c28b00; font-size: 15px;}
+        .btn-auto:hover { background: #e6a400; }
+        .reset-btn { flex: 1 1 100%; background: #883333; }
+        .reset-btn:hover { background: #aa4444; }
+
+        .analysis-box { 
+            background: rgba(0,0,0,0.4); padding: 15px; border-radius: 8px; 
+            margin-top: 15px; border-left: 4px solid #4da6ff; display: none; 
+            animation: fadeIn 0.4s ease-out;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .analysis-box.active { display: block; }
+        .analysis-box h3 { margin: 0 0 8px 0; color: #fff; font-size: 16px; display: flex; justify-content: space-between;}
+        .analysis-box p { margin: 0 0 10px 0; font-size: 13.5px; line-height: 1.5; color: #ccc;}
+        
+        /* 物理公式渲染样式 */
+        .formula { 
+            background: #000; padding: 12px; border-radius: 5px; 
+            font-family: 'Times New Roman', Times, serif; color: #00ffcc; 
+            font-size: 18px; margin: 10px 0; line-height: 1.8; letter-spacing: 0.5px;
+            border: 1px dashed #445; text-align: center; overflow-x: auto;
+        }
+        .result { color: #ffaa00; font-size: 14px; font-weight: bold; font-family: 'Courier New', monospace; margin-top: 5px;}
+        
+        /* CSS 渲染分式 */
+        .frac { display: inline-block; vertical-align: middle; text-align: center; font-size: 0.9em; margin: 0 4px; line-height: 1.2;}
+        .frac > span { display: block; padding: 2px 4px; }
+        .frac > span.bottom { border-top: 1px solid currentColor; }
+        
+        /* CSS 完美渲染闭合根号 */
+        .sqrt-wrapper { display: inline-block; white-space: nowrap; font-size: 1.1em;}
+        .sqrt-symbol { display: inline-block; vertical-align: bottom; margin-right: -0.1em; font-family: 'Times New Roman'; }
+        .sqrt-content { display: inline-block; border-top: 1px solid currentColor; padding: 1px 2px 0 2px; }
+
+        /* 物理受力矢量标签样式 */
+        .vector-label {
+            color: #fff; font-weight: bold; font-size: 18px; font-style: italic;
+            text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+            pointer-events: none; margin-top: -15px;
+        }
+        .vector-label sub { font-size: 12px; }
+        .label-force-mg { color: #ff5555; }
+        .label-force-T { color: #55ff55; }
+        .label-force-N { color: #55aaff; }
+
+        /* 物体 A/B 大字标签样式 */
+        .obj-label {
+            color: rgba(255, 255, 255, 0.95); font-size: 32px; font-weight: 900;
+            text-shadow: 0px 0px 6px #000, 0px 0px 10px #000; pointer-events: none;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+    
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+</head>
+<body>
+
+    <div id="ui-panel">
+        <h2>物理系统：参数设定 (m=1, m'=2, h=4)</h2>
+        
+        <div class="btn-group">
+            <button class="stage-btn btn-auto" id="btn-auto">▶ 完整展示自动过程</button>
+            <button class="stage-btn" id="btn-s1">1. 自由下落</button>
+            <button class="stage-btn" id="btn-s2">2. 瞬间冲量</button>
+            <button class="stage-btn" id="btn-s3">3. 减速上升</button>
+            <button class="stage-btn reset-btn" id="btn-reset">↺ 重置系统</button>
+        </div>
+
+        <div class="analysis-box active" id="info-s0">
+            <h3>初始状态 <span>(t = 0)</span></h3>
+            <p>物体 A 静止于高处，物体 B 受支持力 N 静止于地面。绳子松弛，无拉力 T。</p>
+        </div>
+
+        <div class="analysis-box" id="info-s1">
+            <h3>过程一：A 自由下落</h3>
+            <p>物体 A 自由下落 h=4m。此过程绳子松弛，<b>拉力 T 为零</b>。</p>
+            <div class="formula">
+                v = <span class="sqrt-wrapper"><span class="sqrt-symbol">&radic;</span><span class="sqrt-content">2gh</span></span>
+            </div>
+            <div class="result">↳ A 刚拉紧前速率 v = √(2×9.8×4) ≈ 8.85 m/s</div>
+        </div>
+
+        <div class="analysis-box" id="info-s2">
+            <h3>过程二：绳子绷紧产生冲量</h3>
+            <p>规定向上为正。绳子绷紧产生极大拉力 T₁=T₂，<b>此时 B 离地，支持力 N 瞬间消失</b>。由于时间极短重力冲量可忽略。</p>
+            <div class="formula" style="font-size: 16px;">
+                (T<sub>1</sub> - mg)Δt = -mV - (-mv)<br>
+                (T<sub>2</sub> - m'g)Δt = m'V - 0
+            </div>
+            <p>消去拉力，解得共同速率表达式：</p>
+            <div class="formula">
+                V = <div class="frac"><span>m</span><span class="bottom">m + m'</span></div> v 
+                  = <div class="frac"><span>m</span><span class="bottom">m + m'</span></div><span class="sqrt-wrapper"><span class="sqrt-symbol">&radic;</span><span class="sqrt-content">2gh</span></span>
+            </div>
+            <div class="result">↳ 共同速率 V = 1/(1+2) × 8.85 ≈ 2.95 m/s</div>
+        </div>
+
+        <div class="analysis-box" id="info-s3">
+            <h3>过程三：常力连接体减速</h3>
+            <p>冲量结束后拉力恢复为常数 T。系统合力阻碍运动，A、B减速至速度为0。支持力 N 依然不存在。</p>
+            <div class="formula" style="font-size: 16px;">
+                T - mg = -ma<br>
+                T - m'g = m'a
+            </div>
+            <p>解得加速度 a 与 B 上升最大高度 H：</p>
+            <div class="formula">
+                a = <div class="frac"><span>m' - m</span><span class="bottom">m' + m</span></div> g<br>
+                H = <div class="frac"><span>V<sup>2</sup></span><span class="bottom">2a</span></div> 
+                  = <div class="frac"><span>m<sup>2</sup></span><span class="bottom">(m + m')(m' - m)</span></div> h
+            </div>
+            <div class="result">↳ 最终 B 额外上升高度 H ≈ 1.33 m</div>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- 物理参数与系统计算 ---
+        const g = 9.8;
+        const m = 1.0;
+        const m_prime = 2.0;
+        const h_drop = 4.0;
+        
+        const v0 = Math.sqrt(2 * g * h_drop); 
+        const V_common = (m * v0) / (m + m_prime); 
+        const sys_a = ((m - m_prime) * g) / (m + m_prime); 
+        
+        let currentState = 0; 
+        let autoPlay = false;
+        let pauseTimer = 0;
+        
+        const pulleyY = 12;
+        const pulleyRadius = 2.5; // 核心修改：与 Ax_pos 间距完美匹配
+        const Ax_pos = -2.5;
+        const Bx_pos = 2.5;
+        const groundY = 0;
+        const sizeA = 1.2;
+        const sizeB = 1.6;
+        
+        let Ay = 10; 
+        let By = groundY + sizeB/2; 
+        let sys_v = 0; 
+
+        // --- Three.js 初始化 ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x111111, 20, 100);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 8, 32); // 稍微拉远视角以适应大滑轮
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 5, 0);
+        controls.enableDamping = true;
+
+        scene.add(new THREE.AmbientLight(0x666666));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // --- 场景网格构建 ---
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(50, 50), new THREE.MeshPhongMaterial({color: 0x334455, depthWrite: false}));
+        ground.rotation.x = -Math.PI / 2; scene.add(ground);
+        const grid = new THREE.GridHelper(50, 50, 0x000000, 0x000000);
+        grid.material.opacity = 0.25; grid.material.transparent = true; scene.add(grid);
+
+        // 核心修改：生成尺寸匹配的滑轮
+        const pulley = new THREE.Mesh(new THREE.CylinderGeometry(pulleyRadius, pulleyRadius, 0.5, 32).rotateX(Math.PI/2), new THREE.MeshPhongMaterial({color: 0x888888}));
+        pulley.position.set(0, pulleyY, 0); scene.add(pulley);
+        
+        // 优化支架设计：中心轴 + 背后悬吊杆
+        const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.2).rotateX(Math.PI/2), new THREE.MeshPhongMaterial({color: 0x333333}));
+        axle.position.set(0, pulleyY, 0); scene.add(axle);
+        const hanger = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 6), new THREE.MeshPhongMaterial({color: 0x444444}));
+        hanger.position.set(0, pulleyY + 3, -0.6); scene.add(hanger);
+
+        const meshA = new THREE.Mesh(new THREE.BoxGeometry(sizeA, sizeA, sizeA), new THREE.MeshPhongMaterial({color: 0x0088ff})); scene.add(meshA);
+        const meshB = new THREE.Mesh(new THREE.BoxGeometry(sizeB, sizeB, sizeB), new THREE.MeshPhongMaterial({color: 0xff6600})); scene.add(meshB);
+
+        meshA.add(new THREE.CSS2DObject(Object.assign(document.createElement('div'), {className: 'obj-label', innerText: 'A'})));
+        meshB.add(new THREE.CSS2DObject(Object.assign(document.createElement('div'), {className: 'obj-label', innerText: 'B'})));
+        meshA.children[0].position.set(0, 0, sizeA/2 + 0.1);
+        meshB.children[0].position.set(0, 0, sizeB/2 + 0.1);
+
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+        
+        // 核心修改：生成绕过滑轮上半圈的固定弧形绳索
+        const topRopePoints = [];
+        for (let i = 0; i <= 30; i++) {
+            const angle = Math.PI * (i / 30); // 0 到 PI
+            topRopePoints.push(new THREE.Vector3(pulleyRadius * Math.cos(angle), pulleyY + pulleyRadius * Math.sin(angle), 0));
+        }
+        const topRope = new THREE.Line(new THREE.BufferGeometry().setFromPoints(topRopePoints), lineMat);
+        scene.add(topRope);
+
+        const lineB = new THREE.Line(new THREE.BufferGeometry(), lineMat); scene.add(lineB);
+        const curvePathA = new THREE.QuadraticBezierCurve3();
+        const lineA = new THREE.Line(new THREE.BufferGeometry(), lineMat); scene.add(lineA);
+
+        // --- 受力矢量箭头构建 (基于物体重心发出) ---
+        const vectorsGroup = new THREE.Group();
+        scene.add(vectorsGroup);
+
+        // 创建力箭头的核心函数：包含强力 DOM 抹除机制
+        function createForceArrow(colorHex, labelHtml, labelClass) {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshBasicMaterial({color: colorHex});
+            const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1), mat);
+            const head = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.5), mat);
+            group.add(shaft); group.add(head);
+
+            const div = document.createElement('div');
+            div.className = `vector-label ${labelClass}`;
+            const label = new THREE.CSS2DObject(div);
+            group.add(label);
+
+            group.updateForceState = function(len, isUp, isVisible) {
+                if(!isVisible || len <= 0) { 
+                    // 彻底隐藏：隐藏模型体 + 清空HTML内容 + display:none
+                    shaft.visible = false;
+                    head.visible = false;
+                    div.innerHTML = ''; // 【核心】：彻底清空HTML，防止任何残留
+                    div.style.display = 'none'; 
+                    return; 
+                }
+                
+                // 恢复显示：显示模型体 + 填充回HTML内容 + display:block
+                shaft.visible = true;
+                head.visible = true;
+                div.innerHTML = labelHtml; 
+                div.style.display = 'block';
+
+                let sign = isUp ? 1 : -1; 
+                shaft.scale.y = len;
+                shaft.position.y = (len / 2) * sign;
+                head.position.y = (len + 0.25) * sign; 
+                head.rotation.z = isUp ? 0 : Math.PI;
+                label.position.y = (len + 0.8) * sign;
+            };
+            
+            group.updateForceState(0, true, false); // 初始化绝对隐藏
+            vectorsGroup.add(group);
+            return group;
+        }
+
+        const force_A_mg = createForceArrow(0xff5555, 'mg', 'label-force-mg');
+        const force_B_mPg = createForceArrow(0xff5555, "m'g", 'label-force-mg');
+        const force_B_N = createForceArrow(0x55aaff, 'N', 'label-force-N');
+        const force_A_T1 = createForceArrow(0x55ff55, 'T<sub>1</sub>', 'label-force-T');
+        const force_B_T2 = createForceArrow(0x55ff55, 'T<sub>2</sub>', 'label-force-T');
+        const force_A_T = createForceArrow(0x55ff55, 'T', 'label-force-T');
+        const force_B_T = createForceArrow(0x55ff55, 'T', 'label-force-T');
+
+        function updateSceneElements() {
+            // 位置同步
+            meshA.position.set(Ax_pos, Ay, 0);
+            meshB.position.set(Bx_pos, By, 0);
+            
+            force_A_mg.position.set(Ax_pos, Ay, 0); force_A_T1.position.set(Ax_pos, Ay, 0); force_A_T.position.set(Ax_pos, Ay, 0);
+            force_B_mPg.position.set(Bx_pos, By, 0); force_B_N.position.set(Bx_pos, By, 0); 
+            force_B_T2.position.set(Bx_pos, By, 0); force_B_T.position.set(Bx_pos, By, 0);
+
+            // 绳子同步：绳子与大滑轮边缘完美接合
+            lineB.geometry.setFromPoints([new THREE.Vector3(Bx_pos, By+sizeB/2, 0), new THREE.Vector3(Bx_pos, pulleyY, 0)]);
+            if (currentState <= 1 && Ay > 10 - h_drop) {
+                let slack = (h_drop - (10 - Ay)) * 0.4;
+                curvePathA.v0 = new THREE.Vector3(Ax_pos, Ay+sizeA/2, 0);
+                curvePathA.v1 = new THREE.Vector3(Ax_pos + slack, (Ay+pulleyY)/2, 0);
+                curvePathA.v2 = new THREE.Vector3(Ax_pos, pulleyY, 0);
+                lineA.geometry.setFromPoints(curvePathA.getPoints(20));
+            } else {
+                lineA.geometry.setFromPoints([new THREE.Vector3(Ax_pos, Ay+sizeA/2, 0), new THREE.Vector3(Ax_pos, pulleyY, 0)]);
+            }
+
+            // --- 严格独立的矢量状态机控制 ---
+            if (currentState === 0 || currentState === 1) {
+                // 阶段 0、1：只有重力和支持力。没有任何 T！
+                force_A_mg.updateForceState(2.0, false, true);
+                force_B_mPg.updateForceState(4.0, false, true);
+                force_B_N.updateForceState(4.0, true, true);  // B放置在地上，有支持力N
+                
+                force_A_T1.updateForceState(0, true, false); 
+                force_B_T2.updateForceState(0, true, false); 
+                force_A_T.updateForceState(0, true, false);  
+                force_B_T.updateForceState(0, true, false);  
+            } 
+            else if (currentState === 2) {
+                // 阶段 2：瞬间状态。支持力 N 立即消失！出现 T1, T2
+                force_A_mg.updateForceState(2.0, false, true); force_A_mg.children[0].material.opacity = 0.3;
+                force_B_mPg.updateForceState(4.0, false, true); force_B_mPg.children[0].material.opacity = 0.3;
+                
+                force_B_N.updateForceState(0, true, false);  // 支持力 N 瞬间消失
+                
+                force_A_T1.updateForceState(6.0, true, true); // 产生瞬间极大拉力 T1
+                force_B_T2.updateForceState(6.0, true, true); // 产生瞬间极大拉力 T2
+                
+                force_A_T.updateForceState(0, true, false);  
+                force_B_T.updateForceState(0, true, false);  
+            }
+            else if (currentState === 3 || currentState === 4) {
+                // 阶段 3：连体运动。支持力 N 继续消失！出现常数 T
+                force_A_mg.updateForceState(2.0, false, true); force_A_mg.children[0].material.opacity = 1.0;
+                force_B_mPg.updateForceState(4.0, false, true); force_B_mPg.children[0].material.opacity = 1.0;
+                
+                force_B_N.updateForceState(0, true, false);  // 支持力 N 依然消失
+                
+                force_A_T1.updateForceState(0, true, false); 
+                force_B_T2.updateForceState(0, true, false); 
+                
+                force_A_T.updateForceState(2.8, true, true); // 常力 T 显示
+                force_B_T.updateForceState(2.8, true, true); // 常力 T 显示
+            }
+        }
+
+        // --- 物理运动学循环 ---
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            let dt = clock.getDelta();
+            dt = Math.min(dt, 0.05) * 1.5; 
+
+            if (currentState === 1) {
+                sys_v += g * dt; 
+                Ay -= sys_v * dt;
+                
+                if (Ay <= 10 - h_drop) {
+                    Ay = 10 - h_drop;
+                    if(autoPlay) {
+                        switchState(2, true);
+                        pauseTimer = 1.5; 
+                    } else {
+                        switchState(2);
+                    }
+                }
+            } 
+            else if (currentState === 2 && autoPlay) {
+                pauseTimer -= dt;
+                if (pauseTimer <= 0) switchState(3, true);
+            }
+            else if (currentState === 3) {
+                sys_v += sys_a * dt; 
+                Ay -= sys_v * dt; 
+                By += sys_v * dt; 
+
+                if (sys_v <= 0) {
+                    sys_v = 0; 
+                    currentState = 4; 
+                }
+            }
+
+            updateSceneElements();
+            controls.update();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        // --- UI 控制机 ---
+        function switchState(state, isAuto = false) {
+            if (!isAuto) autoPlay = false; 
+            currentState = state;
+            
+            document.querySelectorAll('.stage-btn').forEach(b => b.classList.remove('active'));
+            if(state >= 1 && state <= 3) document.getElementById(`btn-s${state}`).classList.add('active');
+            if(autoPlay) document.getElementById('btn-auto').classList.add('active');
+
+            document.querySelectorAll('.analysis-box').forEach(b => b.classList.remove('active'));
+            if (state === 0) {
+                document.getElementById('info-s0').classList.add('active');
+            } else {
+                for (let i = 1; i <= state; i++) if(i <= 3) document.getElementById(`info-s${i}`).classList.add('active');
+                if (state === 4) [1,2,3].forEach(i => document.getElementById(`info-s${i}`).classList.add('active'));
+            }
+            setTimeout(() => { const p = document.getElementById('ui-panel'); p.scrollTop = p.scrollHeight; }, 50);
+
+            if (state === 0 || state === 1) {
+                Ay = 10; By = groundY + sizeB/2; sys_v = 0;
+            } else if (state === 2) {
+                Ay = 10 - h_drop; By = groundY + sizeB/2;
+            } else if (state === 3) {
+                Ay = 10 - h_drop; By = groundY + sizeB/2;
+                sys_v = V_common; 
+            }
+            updateSceneElements();
+        }
+
+        document.getElementById('btn-auto').onclick = () => { autoPlay = true; switchState(1, true); };
+        document.getElementById('btn-s1').onclick = () => switchState(1);
+        document.getElementById('btn-s2').onclick = () => switchState(2);
+        document.getElementById('btn-s3').onclick = () => switchState(3);
+        document.getElementById('btn-reset').onclick = () => switchState(0);
+
+        switchState(0);
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight); labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        animate();
+    </script>
+</body>
+</html>

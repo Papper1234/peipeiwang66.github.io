@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Z-Up 空间运动综合推演</title>
+    <style>
+        :root {
+            --car: #3b82f6;       /* 指挥车 - 蓝色 */
+            --drone: #10b981;     /* 无人机 - 绿色 */
+            --material: #f59e0b;  /* 物资 - 橙色 */
+            --victim: #ef4444;    /* 遇难者 - 红色 */
+            --bg-color: #0b1121;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg-color); color: #f8fafc; user-select: none;
+        }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* 浮动标签 */
+        .floating-label {
+            position: absolute; pointer-events: none; z-index: 5;
+            transform: translate(-50%, -50%); transition: opacity 0.2s;
+            font-weight: bold; font-size: 13px; text-shadow: 1px 1px 4px #000;
+            padding: 4px 8px; border-radius: 4px; background: rgba(0,0,0,0.6); 
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .dir-label { background: none !important; border: none !important; font-size: 15px; opacity: 0.85; }
+
+        /* 右侧综合控制台 - 还原精致样式 */
+        #control-panel {
+            position: absolute; top: 20px; right: 20px; width: 420px;
+            background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px;
+            padding: 24px; z-index: 10; box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            display: flex; flex-direction: column; max-height: 90vh; overflow-y: auto;
+        }
+        .header { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px; }
+        h1 { font-size: 18px; margin: 0 0 8px 0; color: #fff; letter-spacing: 1px;}
+        .problem-desc { font-size: 12px; color: #cbd5e1; line-height: 1.6; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border-left: 3px solid var(--car);}
+
+        /* 核心推导面板 (还原样式) */
+        .math-panel { background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.08); }
+        .math-step { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .math-step:last-child { border-bottom: none; }
+        .step-title { font-weight: bold; color: #93c5fd; font-size: 14px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;}
+        .step-content { font-size: 13px; color: #e2e8f0; line-height: 1.6; }
+        .formula { display: block; font-family: 'Times New Roman', Times, serif; font-size: 15px; color: #facc15; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; margin: 6px 0; text-align: center; font-weight: bold;}
+        .highlight { color: var(--material); font-weight: bold; }
+
+        /* 时间轴控制 */
+        .control-group { margin-bottom: 15px; padding: 15px; background: rgba(59, 130, 246, 0.1); border-radius: 8px; }
+        .label-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; font-weight: bold; color: #fff;}
+        input[type=range] { width: 100%; accent-color: var(--car); cursor: pointer; }
+
+        /* 底部控制按钮 */
+        .controls { display: flex; gap: 10px; }
+        button {
+            flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: bold;
+            cursor: pointer; transition: 0.2s; font-size: 14px;
+        }
+        .btn-outline { background: rgba(255,255,255,0.1); color: #fff; }
+        .btn-outline:hover { background: rgba(255,255,255,0.2); }
+        .btn-play { background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; }
+        .btn-play:hover { box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
+
+        #hint { position: absolute; bottom: 20px; left: 20px; color: rgba(255,255,255,0.4); font-size: 12px; z-index: 10; pointer-events: none;}
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div id="hint">左键旋转 | 右键平移 | 滚轮缩放<br>※ Z轴高度系：X-东, Y-北, Z-上</div>
+
+    <div id="lbl-car" class="floating-label" style="color: var(--car);">指挥车 (10m/s 东)</div>
+    <div id="lbl-drone" class="floating-label" style="color: var(--drone);">无人机</div>
+    <div id="lbl-drop" class="floating-label" style="color: #a855f7;">投放点 (H=45m)</div>
+    <div id="lbl-victim" class="floating-label" style="color: var(--victim);">遇难者</div>
+    <div id="lbl-land" class="floating-label" style="color: var(--material);">相遇点 (80, 64, 0)</div>
+    
+    <div id="lbl-dir-e" class="floating-label dir-label" style="color: #ff5555;">东 (+X)</div>
+    <div id="lbl-dir-n" class="floating-label dir-label" style="color: #55ff55;">北 (+Y)</div>
+    <div id="lbl-dir-u" class="floating-label dir-label" style="color: #5555ff;">高 (+Z)</div>
+
+    <div id="control-panel">
+        <div class="header">
+            <h1>空间相对运动与相遇推演</h1>
+            <div class="problem-desc">
+                指挥车以 <b>10m/s</b> 向东(X)行驶。无人机相对车以 <b>8m/s</b> 向北(Y)巡航，高度 <b>45m(Z)</b>。第 5s 时自由释放物资。此时一遇难者向南移动，并在落地瞬间恰好接住物资。
+            </div>
+        </div>
+
+        <div class="math-panel">
+            <div class="math-step">
+                <div class="step-title"><span>📝</span> 步骤一：绝对速度合成</div>
+                <div class="step-content">
+                    物资自由释放，初始速度等于无人机绝对速度。<br>
+                    <span class="formula">V_绝 = V_车 + V_相对</span>
+                    即 X轴分速 <span style="color:var(--car)">Vx = 10m/s</span>，Y轴分速 <span style="color:var(--drone)">Vy = 8m/s</span>。
+                </div>
+            </div>
+            <div class="math-step">
+                <div class="step-title"><span>✈️</span> 步骤二：3D空间平抛落点</div>
+                <div class="step-content">
+                    释放点坐标：(50, 40, 45)。下落时间 t2：<br>
+                    <span class="formula">Z = ½gt² ⇒ 45 = 5t² ⇒ t2 = 3s</span>
+                    落地水平位移：ΔX = 10×3 = 30m, ΔY = 8×3 = 24m。<br>
+                    落点绝对坐标：<span class="highlight">X = 80m, Y = 64m, Z = 0m</span>。
+                </div>
+            </div>
+            <div class="math-step">
+                <div class="step-title"><span>🏃</span> 步骤三：相遇逆向求解</div>
+                <div class="step-content">
+                    设遇难者起点为 (80, 80)，向南(-Y)移动至 (80, 64)。<br>
+                    总用时 T = t1 + t2 = 8s。移动距离 S = 16m。<br>
+                    遇难者速度：<span class="formula" style="color:#ef4444;">V_vic = 16 / 8 = 2 m/s</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div class="label-row">
+                <span>演练时间轴 (t)</span>
+                <span id="val-t" style="font-family: monospace; color: #facc15;">0.00 s</span>
+            </div>
+            <input type="range" id="slider-t" min="0" max="8" step="0.01" value="0">
+        </div>
+
+        <div class="controls">
+            <button class="btn-outline" id="btn-reset">重置模型</button>
+            <button class="btn-play" id="btn-play">▶ 播放动画</button>
+        </div>
+    </div>
+
+    <script>
+        // === 1. Z-Up 场景初始化 ===
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.up.set(0, 0, 1); // 设置Z轴向上
+        camera.position.set(120, -120, 100);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(40, 40, 0);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+        sun.position.set(50, 50, 100);
+        scene.add(sun);
+
+        // 地面网格旋转至 XY
+        const grid = new THREE.GridHelper(200, 20, 0x1e293b, 0x1e293b);
+        grid.rotation.x = Math.PI / 2;
+        scene.add(grid);
+
+        // 坐标轴指示器
+        const origin = new THREE.Vector3(0, 0, 0.5);
+        const L = 30;
+        scene.add(new THREE.ArrowHelper(new THREE.Vector3(1,0,0), origin, L, 0xff5555)); // X-红
+        scene.add(new THREE.ArrowHelper(new THREE.Vector3(0,1,0), origin, L, 0x55ff55)); // Y-绿
+        scene.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,1), origin, L, 0x5555ff)); // Z-蓝
+
+        // === 2. 物理参数与实体 ===
+        const H = 45, g = 10, t1 = 5, t2 = 3, T_total = 8;
+        const v_car_x = 10, v_drone_y = 8, v_vic_y = -2;
+
+        const car = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 2), new THREE.MeshPhongMaterial({color: 0x3b82f6}));
+        const drone = new THREE.Group();
+        const dBody = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 0.5, 16), new THREE.MeshPhongMaterial({color: 0x10b981}));
+        dBody.rotation.x = Math.PI/2; drone.add(dBody);
+        
+        const material = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshPhongMaterial({color: 0xf59e0b}));
+        const victim = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 4, 16), new THREE.MeshPhongMaterial({color: 0xef4444}));
+        victim.rotation.x = Math.PI/2;
+
+        scene.add(car, drone, material, victim);
+
+        // 物资抛物线轨迹
+        const matPts = [];
+        for(let i=0; i<=50; i++) {
+            const t = (i/50) * t2;
+            matPts.push(new THREE.Vector3(v_car_x*(t1+t), v_drone_y*(t1+t), Math.max(0, H - 0.5*g*t*t)));
+        }
+        scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(matPts), new THREE.LineBasicMaterial({color: 0xf59e0b})));
+
+        // === 3. 动画与标签逻辑 ===
+        let curT = 0, isPlaying = false;
+        const posCache = { 
+            car: new THREE.Vector3(), drone: new THREE.Vector3(), victim: new THREE.Vector3(), 
+            land: new THREE.Vector3(80, 64, 0), drop: new THREE.Vector3(50, 40, 45),
+            dirE: new THREE.Vector3(35, 0, 0), dirN: new THREE.Vector3(0, 35, 0), dirU: new THREE.Vector3(0, 0, 35)
+        };
+
+        function update() {
+            car.position.set(v_car_x * curT, 0, 1);
+            victim.position.set(80, 80 + (v_vic_y * curT), 2);
+            drone.position.set(v_car_x * curT, v_drone_y * curT, H);
+
+            if (curT <= t1) {
+                material.position.copy(drone.position).sub(new THREE.Vector3(0,0,2));
+            } else {
+                const dt = curT - t1;
+                material.position.set(v_car_x * curT, v_drone_y * curT, Math.max(1, H - 0.5*g*dt*dt));
+            }
+
+            posCache.car.copy(car.position);
+            posCache.drone.copy(drone.position);
+            posCache.victim.copy(victim.position);
+            
+            document.getElementById('val-t').innerText = curT.toFixed(2) + ' s';
+            document.getElementById('slider-t').value = curT;
+        }
+
+        const labels = [
+            {id:'lbl-car', k:'car', o:4}, {id:'lbl-drone', k:'drone', o:5}, {id:'lbl-drop', k:'drop', o:2},
+            {id:'lbl-victim', k:'victim', o:4}, {id:'lbl-land', k:'land', o:0},
+            {id:'lbl-dir-e', k:'dirE', o:0}, {id:'lbl-dir-n', k:'dirN', o:0}, {id:'lbl-dir-u', k:'dirU', o:0}
+        ];
+
+        function syncLabels() {
+            labels.forEach(lb => {
+                const el = document.getElementById(lb.id);
+                const p = posCache[lb.k].clone();
+                p.z += lb.o; p.project(camera);
+                const x = (0.5 + p.x/2) * window.innerWidth;
+                const y = (0.5 - p.y/2) * window.innerHeight;
+                el.style.left = x + 'px'; el.style.top = y + 'px';
+                el.style.opacity = p.z > 1 ? 0 : 1;
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(isPlaying) {
+                curT += 0.016;
+                if(curT >= T_total) { curT = T_total; isPlaying = false; }
+                update();
+            }
+            controls.update();
+            syncLabels();
+            renderer.render(scene, camera);
+        }
+
+        document.getElementById('slider-t').oninput = (e) => { curT = parseFloat(e.target.value); isPlaying = false; update(); };
+        document.getElementById('btn-play').onclick = () => { if(curT>=T_total) curT=0; isPlaying = !isPlaying; };
+        document.getElementById('btn-reset').onclick = () => { curT=0; isPlaying=false; update(); };
+
+        update();
+        animate();
+    </script>
+</body>
+</html>

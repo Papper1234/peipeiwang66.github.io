@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>恒定力矩圆周运动模型 - 立体门</title>
+<style>
+    body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f2f5; margin: 0; padding: 20px; }
+    h2 { color: #333; }
+    canvas { 
+        border: 1px solid #ccc; 
+        background: linear-gradient(to bottom, #e6f0fa 0%, #ffffff 50%, #e8e8e8 100%); 
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+        border-radius: 8px;
+    }
+    .controls { margin-top: 15px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+    label { font-weight: bold; background: #fff; padding: 10px 15px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    input[type=range] { vertical-align: middle; }
+    button { 
+        margin: 15px; padding: 8px 20px; font-size: 15px; cursor: pointer; 
+        border: none; background-color: #007bff; color: white; 
+        border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: 0.2s;
+    }
+    button:hover { background-color: #0056b3; }
+    #output { 
+        background: #fff; display: inline-block; padding: 15px 25px; 
+        border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-top: 5px; text-align: left; line-height: 1.6;
+    }
+</style>
+</head>
+<body>
+
+<h2>恒定力矩驱动的立体门旋转</h2>
+
+<canvas id="canvas" width="600" height="400"></canvas>
+
+<div class="controls">
+    <label>力 F (大小):
+        <input type="range" id="force" min="0" max="50" value="20">
+    </label>
+
+    <label>作用点 r (距门轴):
+        <input type="range" id="radius" min="0" max="200" value="150">
+    </label>
+
+    <label>夹角 θ (力与门):
+        <input type="range" id="angle" min="0" max="180" value="90">
+    </label>
+</div>
+
+<button onclick="resetSystem()">重置系统</button>
+
+<div id="output"></div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let thetaRod = 0; // 门的旋转角度
+let omega = 0;    // 角速度
+const I = 5000;   // 转动惯量
+
+let lastTime = 0; 
+
+// 立体门相关参数
+const doorWidth = 200;
+const doorHeight = 220;
+const hingeX = 250;     // 门轴在屏幕上的X坐标
+const hingeY = 200;     // 门轴在屏幕上的Y坐标(中点)
+const tilt = 0.4;       // 伪3D视角倾斜度(Y轴压缩率)
+
+function resetSystem(){
+    omega = 0;
+    thetaRod = 0;
+}
+
+// 辅助函数：将3D局部坐标投影到2D屏幕坐标
+function project3D(r, h, angle) {
+    const x3d = r * Math.cos(angle);
+    const depth = r * Math.sin(angle); 
+    
+    return {
+        x: hingeX + x3d,
+        y: hingeY + h + depth * tilt
+    };
+}
+
+// 辅助函数：画带箭头的线(作用力)
+function drawArrow(ctx, fromX, fromY, toX, toY) {
+    const headlen = 10; 
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromY);
+    ctx.lineTo(toX, toY);
+    ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.stroke();
+}
+
+function draw(currentTime){
+    if (lastTime === 0) lastTime = currentTime;
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    
+    if (dt > 0.1) dt = 0.016; 
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const F = parseFloat(document.getElementById("force").value);
+    const r = parseFloat(document.getElementById("radius").value);
+    const angleDeg = parseFloat(document.getElementById("angle").value);
+    const angleRad = angleDeg * Math.PI / 180;
+
+    // 物理计算：恒定力矩
+    const torque = r * F * Math.sin(angleRad);
+    const alpha = torque / I;
+
+    omega += alpha * dt;
+    thetaRod += omega * dt;
+
+    // ================= 开始绘制3D场景 =================
+
+    // 1. 画地面的旋转轨迹虚线
+    ctx.beginPath();
+    ctx.ellipse(hingeX, hingeY + doorHeight/2, doorWidth, doorWidth * tilt, 0, 0, Math.PI*2);
+    ctx.strokeStyle = "rgba(0,0,0,0.15)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]); 
+
+    // 2. 画门框 (修正为倒 "U" 形)
+    ctx.beginPath();
+    // 左边门柱底部
+    ctx.moveTo(hingeX, hingeY + doorHeight/2);
+    // 连到左边门柱顶部
+    ctx.lineTo(hingeX, hingeY - doorHeight/2);
+    // 连到右边门框顶部 (横梁)
+    ctx.lineTo(hingeX + doorWidth, hingeY - doorHeight/2);
+    // 连到右边门柱底部
+    ctx.lineTo(hingeX + doorWidth, hingeY + doorHeight/2);
+    
+    ctx.strokeStyle = "#5C4033"; // 深木色
+    ctx.lineWidth = 8;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+
+    // 3. 计算门在3D空间中的四个角并投影到屏幕
+    const pTopLeft = project3D(0, -doorHeight/2, thetaRod);
+    const pBotLeft = project3D(0, doorHeight/2, thetaRod);
+    const pTopRight = project3D(doorWidth, -doorHeight/2, thetaRod);
+    const pBotRight = project3D(doorWidth, doorHeight/2, thetaRod);
+
+    let safeTheta = isNaN(thetaRod) ? 0 : thetaRod;
+    const lightness = 45 + 15 * Math.sin(safeTheta);
+    const doorColor = `hsl(30, 50%, ${lightness}%)`;
+    const doorBorderColor = `hsl(30, 50%, ${lightness - 15}%)`;
+
+    // 4. 画门面本体
+    ctx.beginPath();
+    ctx.moveTo(pTopLeft.x, pTopLeft.y);
+    ctx.lineTo(pTopRight.x, pTopRight.y);
+    ctx.lineTo(pBotRight.x, pBotRight.y);
+    ctx.lineTo(pBotLeft.x, pBotLeft.y);
+    ctx.closePath();
+    
+    ctx.fillStyle = doorColor;
+    ctx.fill();
+    ctx.strokeStyle = doorBorderColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 5. 画门板内部的装饰框线
+    const pPanelTL = project3D(doorWidth*0.15, -doorHeight*0.4, thetaRod);
+    const pPanelTR = project3D(doorWidth*0.85, -doorHeight*0.4, thetaRod);
+    const pPanelBR = project3D(doorWidth*0.85, doorHeight*0.4, thetaRod);
+    const pPanelBL = project3D(doorWidth*0.15, doorHeight*0.4, thetaRod);
+    
+    ctx.beginPath();
+    ctx.moveTo(pPanelTL.x, pPanelTL.y);
+    ctx.lineTo(pPanelTR.x, pPanelTR.y);
+    ctx.lineTo(pPanelBR.x, pPanelBR.y);
+    ctx.lineTo(pPanelBL.x, pPanelBL.y);
+    ctx.closePath();
+    ctx.strokeStyle = `hsl(30, 50%, ${lightness - 10}%)`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 6. 画力作用点 (门把手位置)
+    const forcePoint = project3D(r, 0, thetaRod);
+    ctx.beginPath();
+    ctx.arc(forcePoint.x, forcePoint.y, 6, 0, 2*Math.PI);
+    ctx.fillStyle = "#0056b3";
+    ctx.fill();
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 7. 画力向量箭头
+    const globalForceAngle = thetaRod + angleRad; 
+    const forceScale = 2.5; 
+    const fX_3D = forcePoint.x + F * forceScale * Math.cos(globalForceAngle);
+    const fDepth = F * forceScale * Math.sin(globalForceAngle);
+    const fY_3D = forcePoint.y + fDepth * tilt;
+
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 3;
+    if (F > 0) {
+        drawArrow(ctx, forcePoint.x, forcePoint.y, fX_3D, fY_3D);
+    }
+
+    // ================= 结束绘制 =================
+
+    document.getElementById("output").innerHTML =
+        "<b>[ 实时控制参数 ]</b><br>" +
+        "推力 <b>F</b> = "+F.toFixed(1)+" &nbsp;|&nbsp; " +
+        "作用点 <b>r</b> = "+r.toFixed(1)+" &nbsp;|&nbsp; " +
+        "夹角 <b>θ</b> = "+angleDeg.toFixed(1)+"°<hr style='margin:8px 0; border-top:1px solid #ddd;'>" +
+        "<b>[ 系统运动状态 ]</b><br>" + 
+        "产生的力矩 <b>M</b> = "+torque.toFixed(2)+"<br>" +
+        "角加速度 <b>α</b> = "+alpha.toFixed(4)+" &nbsp;|&nbsp; " +
+        "角速度 <b>ω</b> = "+omega.toFixed(3)+"<br>" +
+        "门当前角度 = <span style='color:red;font-weight:bold;'>"+(thetaRod*180/Math.PI).toFixed(1)+"°</span>";
+
+    requestAnimationFrame(draw);
+}
+
+requestAnimationFrame(draw);
+</script>
+
+</body>
+</html>

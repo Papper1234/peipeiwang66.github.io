@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>转弯时的一滴水 - 空间曲线与法向加速度</title>
+    <style>
+        :root {
+            --primary: #3b82f6;     /* 轨迹/水滴 - 蓝色 */
+            --tangent: #10b981;     /* 切向速度 - 绿色 */
+            --normal: #ef4444;      /* 法向加速度 - 红色 */
+            --gravity: #f59e0b;     /* 重力 - 橙色 */
+            --bg-color: #0b1121;
+            --panel-bg: rgba(15, 23, 42, 0.85);
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg-color); color: #f8fafc; user-select: none;
+        }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* 浮动标签样式 */
+        .floating-label {
+            position: absolute; pointer-events: none; z-index: 5;
+            transform: translate(-50%, -50%); transition: opacity 0.2s;
+            font-weight: bold; font-size: 14px; text-shadow: 1px 1px 4px #000;
+            padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,0.4);
+            opacity: 0; /* 默认隐藏，等待第一帧计算 */
+        }
+        .c-vt { color: var(--tangent); border-left: 3px solid var(--tangent); }
+        .c-an { color: var(--normal); border-left: 3px solid var(--normal); }
+        .c-g  { color: var(--gravity); border-left: 3px solid var(--gravity); }
+
+        /* 右侧推演控制台 */
+        #control-panel {
+            position: absolute; top: 20px; right: 20px; width: 380px;
+            background: var(--panel-bg); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+            padding: 24px; z-index: 10; box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            display: flex; flex-direction: column; max-height: 90vh; overflow-y: auto;
+        }
+        .header { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 16px; margin-bottom: 20px; }
+        h1 { font-size: 20px; margin: 0 0 8px 0; color: #fff; letter-spacing: 1px;}
+        .problem-desc { font-size: 13px; color: #cbd5e1; line-height: 1.6; background: rgba(59, 130, 246, 0.15); padding: 12px; border-radius: 6px; border-left: 3px solid var(--primary);}
+
+        /* 控件组 */
+        .control-group { margin-bottom: 15px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; }
+        .label-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; font-weight: bold; color: #93c5fd;}
+        input[type=range] { width: 100%; accent-color: var(--primary); cursor: pointer; }
+
+        /* 数据监视器 */
+        .data-panel { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin-bottom: 15px; font-family: monospace; font-size: 14px; line-height: 1.8; }
+        .data-row { display: flex; justify-content: space-between; }
+        .highlight-data { color: var(--normal); font-weight: bold; font-size: 16px; }
+
+        /* 视角切换器 */
+        .view-toggle { display: flex; background: rgba(0,0,0,0.5); border-radius: 8px; overflow: hidden; margin-bottom: 15px; }
+        .view-btn { flex: 1; padding: 10px; text-align: center; font-size: 13px; font-weight: bold; cursor: pointer; color: #94a3b8; transition: 0.3s; }
+        .view-btn.active { background: var(--primary); color: #fff; }
+
+        /* 数学推导面板 */
+        #math-panel {
+            display: none; background: rgba(15, 23, 42, 0.95); border: 1px dashed var(--normal);
+            border-radius: 8px; padding: 15px; margin-bottom: 15px; font-size: 13px;
+            line-height: 1.6; color: #e2e8f0; animation: fadeIn 0.5s forwards;
+        }
+        .formula { display: block; text-align: center; font-family: 'Times New Roman', serif; font-size: 16px; color: #facc15; font-weight: bold; margin: 6px 0;}
+        .conclusion { background: rgba(239, 68, 68, 0.2); border-left: 3px solid var(--normal); padding: 8px; margin-top: 10px; color: #fca5a5;}
+
+        @keyframes fadeIn { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+
+        /* 底部控制按钮 */
+        .controls { display: flex; gap: 12px; }
+        button {
+            flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold;
+            cursor: pointer; transition: 0.2s; font-size: 14px;
+        }
+        .btn-outline { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+        .btn-outline:hover { background: rgba(255,255,255,0.2); }
+        .btn-play { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
+        .btn-play:hover { box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4); }
+        .btn-math { background: linear-gradient(135deg, #ef4444, #b91c1c); color: #fff; margin-bottom: 15px;}
+
+        #hint { position: absolute; bottom: 20px; left: 20px; color: rgba(255,255,255,0.4); font-size: 12px; z-index: 10; pointer-events: none;}
+    </style>
+    <!-- 引入 Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div id="hint">左键旋转视角 | 滚轮缩放 | 视角切换可体验乘客错觉</div>
+
+    <!-- 3D空间漂浮标签 -->
+    <div id="lbl-vt" class="floating-label c-vt">v (切向速度)</div>
+    <div id="lbl-an" class="floating-label c-an">an (向心加速度)</div>
+    <div id="lbl-g"  class="floating-label c-g">g (重力)</div>
+
+    <!-- 右侧推演控制台 -->
+    <div id="control-panel">
+        <div class="header">
+            <h1>转弯时的一滴水</h1>
+            <div class="problem-desc">
+                <strong>打破直觉：</strong>高铁在弯道上高速行驶，车厢内竖直向上抛出一滴水并精准落回杯中。在地面铁道工人看来，水滴做的是什么运动？绝对不是抛物线！
+            </div>
+        </div>
+
+        <div class="view-toggle">
+            <div class="view-btn active" id="view-ground">🌍 地面全局视角</div>
+            <div class="view-btn" id="view-train">🚄 乘客视觉错觉</div>
+        </div>
+
+        <div class="control-group">
+            <div class="label-row"><span>高铁牵连速度 v</span><span id="val-v">30 m/s</span></div>
+            <input type="range" id="slider-v" min="10" max="60" step="1" value="30">
+        </div>
+        <div class="control-group">
+            <div class="label-row"><span>弯道曲率半径 R</span><span id="val-r">50 m</span></div>
+            <input type="range" id="slider-r" min="20" max="100" step="1" value="50">
+        </div>
+        <div class="control-group">
+            <div class="label-row"><span>上抛初速度 v₀</span><span id="val-v0">15 m/s</span></div>
+            <input type="range" id="slider-v0" min="5" max="25" step="1" value="15">
+        </div>
+
+        <div class="data-panel">
+            <div class="data-row"><span>腾空总时间 T:</span><span id="data-t">3.00 s</span></div>
+            <div class="data-row"><span>轨道角速度 ω:</span><span id="data-w">0.60 rad/s</span></div>
+            <div class="data-row" style="margin-top: 8px; border-top: 1px dashed #444; padding-top: 8px;">
+                <span style="color: var(--normal);">向心加速度 a_n = v²/R:</span>
+                <span id="data-an" class="highlight-data">18.0 m/s²</span>
+            </div>
+        </div>
+
+        <button class="btn-math" id="btn-math">揭秘：为什么不是抛物线？</button>
+
+        <div id="math-panel">
+            <div style="color:#60a5fa; font-weight:bold; margin-bottom: 8px;">空间螺旋线解析推导</div>
+            由于车厢内空气的曳引，水滴在水平面被迫跟随杯子做圆周运动，同时竖直方向做上抛运动。<br>
+            建立柱坐标系参数方程：
+            <span class="formula">x(t) = R &middot; cos(&omega;t)</span>
+            <span class="formula">y(t) = R &middot; sin(&omega;t)</span>
+            <span class="formula">z(t) = v<sub>0</sub>t - &frac12;gt²</span>
+            <div class="conclusion">
+                对时间求二阶导数：<br>
+                <strong>a<sub>水平</sub> = R&omega;² = v²/R (指向圆心)</strong><br>
+                这意味着：水滴在空中的水平面上受到了高达 <span id="math-an" style="color: white;">18.0</span> m/s² 的法向加速度。真实的绝对轨迹是一条<strong>三维抛物柱面螺旋线</strong>！
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-outline" id="btn-reset">重置状态</button>
+            <button class="btn-play" id="btn-play">▶ 播放抛掷动画</button>
+        </div>
+    </div>
+
+    <script>
+        // === 1. Three.js 场景初始化 ===
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0b1121, 0.003);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // 防止转到地下
+
+        // 灯光
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 50);
+        scene.add(dirLight);
+
+        // 地面网格
+        const gridHelper = new THREE.GridHelper(300, 60, 0x1e293b, 0x0f172a);
+        scene.add(gridHelper);
+
+        // === 2. 物理参数与状态 ===
+        let V = 30;     // 高铁速度
+        let R = 50;     // 转弯半径
+        let V0 = 15;    // 竖直初速度
+        const g = 10;   // 重力加速度
+        
+        let t = 0;      // 当前时间
+        let isPlaying = false;
+        let T_total = 2 * V0 / g; 
+        let omega = V / R;        
+
+        let currentView = 'ground'; // 视图模式
+
+        // === 3. 核心 3D 对象构建 ===
+        const pivot = new THREE.Group();
+        scene.add(pivot);
+
+        // 高铁轨道 (圆环)
+        let trackMesh;
+        function createTrack() {
+            if(trackMesh) scene.remove(trackMesh);
+            const geo = new THREE.TorusGeometry(R, 0.4, 64, 100);
+            const mat = new THREE.MeshPhongMaterial({ color: 0x475569 });
+            trackMesh = new THREE.Mesh(geo, mat);
+            trackMesh.rotation.x = Math.PI / 2;
+            scene.add(trackMesh);
+        }
+
+        // 杯子基准点
+        const cupGeo = new THREE.CylinderGeometry(0.8, 0.6, 1.5, 16);
+        const cupMat = new THREE.MeshPhongMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.8 });
+        const cup = new THREE.Mesh(cupGeo, cupMat);
+        cup.position.set(R, 0.75, 0); 
+        pivot.add(cup);
+
+        // 水滴 (蓝色的球体)
+        const dropGeo = new THREE.SphereGeometry(0.5, 32, 32);
+        const dropMat = new THREE.MeshPhongMaterial({ color: 0x3b82f6, shininess: 100 });
+        const drop = new THREE.Mesh(dropGeo, dropMat);
+        scene.add(drop);
+
+        // 真实绝对轨迹线
+        let trajectoryLine;
+        function updateTrajectory() {
+            if(trajectoryLine) scene.remove(trajectoryLine);
+            const points =[];
+            const segments = 150;
+            for(let i = 0; i <= segments; i++) {
+                const time = (i / segments) * T_total;
+                const angle = omega * time;
+                const x = R * Math.cos(angle);
+                const z = -R * Math.sin(angle); 
+                const y = 1.5 + V0 * time - 0.5 * g * time * time;
+                points.push(new THREE.Vector3(x, y, z));
+            }
+            const geo = new THREE.BufferGeometry().setFromPoints(points);
+            const mat = new THREE.LineBasicMaterial({ color: 0x3b82f6 });
+            trajectoryLine = new THREE.Line(geo, mat);
+            scene.add(trajectoryLine);
+        }
+
+        // 物理矢量箭头
+        function createArrow(color, id) {
+            const arrow = new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0), 1, color, 1.5, 1);
+            arrow.userData = { id: id, endPoint: new THREE.Vector3() }; // 修复了报错核心点，预留 endPoint
+            scene.add(arrow);
+            return arrow;
+        }
+
+        const arrowVt = createArrow(0x10b981, 'lbl-vt'); 
+        const arrowAn = createArrow(0xef4444, 'lbl-an'); 
+        const arrowG  = createArrow(0xf59e0b, 'lbl-g');  
+
+        // === 4. UI 逻辑与数据同步 ===
+        const sliderV = document.getElementById('slider-v');
+        const sliderR = document.getElementById('slider-r');
+        const sliderV0 = document.getElementById('slider-v0');
+        const valV = document.getElementById('val-v');
+        const valR = document.getElementById('val-r');
+        const valV0 = document.getElementById('val-v0');
+        const dataT = document.getElementById('data-t');
+        const dataW = document.getElementById('data-w');
+        const dataAn = document.getElementById('data-an');
+        const mathAn = document.getElementById('math-an');
+        
+        const btnPlay = document.getElementById('btn-play');
+        const btnReset = document.getElementById('btn-reset');
+        const btnMath = document.getElementById('btn-math');
+        const mathPanel = document.getElementById('math-panel');
+
+        function syncParams() {
+            V = parseFloat(sliderV.value);
+            R = parseFloat(sliderR.value);
+            V0 = parseFloat(sliderV0.value);
+            
+            T_total = 2 * V0 / g;
+            omega = V / R;
+            const an = (V * V) / R;
+
+            valV.innerText = V + ' m/s';
+            valR.innerText = R + ' m';
+            valV0.innerText = V0 + ' m/s';
+
+            dataT.innerText = T_total.toFixed(2) + ' s';
+            dataW.innerText = omega.toFixed(2) + ' rad/s';
+            dataAn.innerText = an.toFixed(1) + ' m/s²';
+            mathAn.innerText = an.toFixed(1);
+
+            createTrack();
+            cup.position.set(R, 0.75, 0);
+            updateTrajectory();
+            
+            if(!isPlaying) resetAnimation();
+        }
+        
+        // 修复之前代码数组语法的ASI解析报错
+        const slidersArray = [sliderV, sliderR, sliderV0];
+        slidersArray.forEach(el => el.addEventListener('input', syncParams));
+
+        // 数学面板展示
+        btnMath.addEventListener('click', () => {
+            mathPanel.style.display = 'block';
+            btnMath.style.display = 'none';
+        });
+
+        // 视角无缝切换
+        document.getElementById('view-ground').addEventListener('click', (e) => {
+            currentView = 'ground';
+            e.target.classList.add('active');
+            document.getElementById('view-train').classList.remove('active');
+            camera.position.set(0, 40, R + 60);
+            controls.target.set(0, 0, 0);
+        });
+
+        document.getElementById('view-train').addEventListener('click', (e) => {
+            currentView = 'train';
+            e.target.classList.add('active');
+            document.getElementById('view-ground').classList.remove('active');
+            updatePhysicsFrame(); // 立即修正视角
+        });
+
+        // === 5. 动画与物理引擎更新 ===
+        function resetAnimation() {
+            t = 0;
+            isPlaying = false;
+            btnPlay.innerText = '▶ 播放抛掷动画';
+            btnPlay.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+            pivot.rotation.y = 0;
+            updatePhysicsFrame();
+        }
+
+        btnPlay.addEventListener('click', () => {
+            if(t >= T_total) resetAnimation();
+            isPlaying = !isPlaying;
+            if(isPlaying) {
+                btnPlay.innerText = '⏸ 暂停动画';
+                btnPlay.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+            } else {
+                btnPlay.innerText = '▶ 继续播放';
+                btnPlay.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+            }
+        });
+
+        btnReset.addEventListener('click', resetAnimation);
+
+        function updatePhysicsFrame() {
+            const currentAngle = omega * t;
+            pivot.rotation.y = currentAngle; 
+
+            // 水滴在全局坐标下的动态演化 (螺旋线方程)
+            const dropX = R * Math.cos(currentAngle);
+            const dropZ = -R * Math.sin(currentAngle);
+            const dropY = 1.5 + V0 * t - 0.5 * g * t * t; 
+            
+            drop.position.set(dropX, Math.max(1.5, dropY), dropZ);
+
+            // 严谨计算箭头朝向并缓存位置供标签使用 (修复之前 ArrowHelper API 越界问题)
+            const dirV = new THREE.Vector3(-Math.sin(currentAngle), 0, -Math.cos(currentAngle)).normalize();
+            const lenV = V / 3;
+            arrowVt.position.copy(drop.position);
+            arrowVt.setDirection(dirV);
+            arrowVt.setLength(lenV);
+            arrowVt.userData.endPoint = drop.position.clone().add(dirV.clone().multiplyScalar(lenV));
+
+            const dirAn = new THREE.Vector3(-Math.cos(currentAngle), 0, Math.sin(currentAngle)).normalize();
+            const lenAn = ((V * V) / R) / 2;
+            arrowAn.position.copy(drop.position);
+            arrowAn.setDirection(dirAn);
+            arrowAn.setLength(lenAn);
+            arrowAn.userData.endPoint = drop.position.clone().add(dirAn.clone().multiplyScalar(lenAn));
+
+            const dirG = new THREE.Vector3(0, -1, 0);
+            const lenG = g;
+            arrowG.position.copy(drop.position);
+            arrowG.setDirection(dirG);
+            arrowG.setLength(lenG);
+            arrowG.userData.endPoint = drop.position.clone().add(dirG.clone().multiplyScalar(lenG));
+
+            // 相机视角处理：如果处于“列车内视角”，将相机架设在轨道后方并盯着水杯
+            if(currentView === 'train') {
+                const cupWorldPos = new THREE.Vector3();
+                cup.getWorldPosition(cupWorldPos);
+                
+                // 将相机设置在杯子后方轨道上 (乘客的视野)
+                const camOffset = new THREE.Vector3(R, 12, 25); 
+                camOffset.applyAxisAngle(new THREE.Vector3(0,1,0), currentAngle); 
+                
+                camera.position.copy(camOffset);
+                controls.target.copy(cupWorldPos); 
+            }
+        }
+
+        // 浮动文字标签投影逻辑
+        const labels = {
+            'lbl-vt': document.getElementById('lbl-vt'),
+            'lbl-an': document.getElementById('lbl-an'),
+            'lbl-g':  document.getElementById('lbl-g')
+        };
+
+        function updateLabels() {
+            [arrowVt, arrowAn, arrowG].forEach(arrow => {
+                const id = arrow.userData.id;
+                const label = labels[id];
+                const endPoint = arrow.userData.endPoint;
+                
+                if (!endPoint) return;
+                
+                const proj = endPoint.clone().project(camera);
+
+                if (proj.z > 1) { 
+                    label.style.opacity = '0'; return; 
+                }
+
+                const x = Math.round((0.5 + proj.x / 2) * window.innerWidth);
+                const y = Math.round((0.5 - proj.y / 2) * window.innerHeight);
+
+                label.style.opacity = '1';
+                label.style.left = x + 'px';
+                label.style.top = y + 'px';
+            });
+        }
+
+        // 主渲染循环
+        let lastTime = performance.now();
+        function animate() {
+            requestAnimationFrame(animate);
+            const now = performance.now();
+            const dt = (now - lastTime) / 1000;
+            lastTime = now;
+
+            if(isPlaying) {
+                t += dt;
+                if(t >= T_total) {
+                    t = T_total;
+                    isPlaying = false;
+                    btnPlay.innerText = '↺ 重新抛掷';
+                    btnPlay.style.background = 'linear-gradient(135deg, #3b82f6, #2563eb)';
+                }
+                updatePhysicsFrame();
+            }
+
+            controls.update();
+            updateLabels();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // 启动系统
+        syncParams();
+        camera.position.set(0, 40, R + 60);
+        controls.target.set(0, 0, 0);
+        updatePhysicsFrame();
+        animate();
+
+    </script>
+</body>
+</html>

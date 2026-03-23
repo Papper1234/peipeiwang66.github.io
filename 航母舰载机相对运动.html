@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>航母舰载机起飞 - 速度矢量合成仿真</title>
+    <style>
+        :root {
+            --v-carrier: #3b82f6;   /* 蓝色: 航母速度 / 牵连速度 */
+            --v-relative: #10b981;  /* 绿色: 相对速度 */
+            --v-absolute: #ef4444;  /* 红色: 绝对速度 */
+            --bg-color: #0b1121;
+            --panel-bg: rgba(15, 23, 42, 0.85);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: var(--bg-color);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            color: var(--text-main); user-select: none;
+        }
+
+        #sim-canvas {
+            position: absolute; top: 0; left: 0; z-index: 1;
+        }
+
+        /* 悬浮控制面板 */
+        #control-panel {
+            position: absolute; top: 20px; left: 20px; width: 340px;
+            background: var(--panel-bg); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+            padding: 20px; z-index: 10; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .header { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; margin-bottom: 16px; }
+        h1 { font-size: 18px; margin: 0 0 4px 0; color: #fff; letter-spacing: 1px; }
+        .subtitle { font-size: 12px; color: var(--text-muted); margin: 0; }
+
+        /* 控件组 */
+        .control-group { margin-bottom: 18px; }
+        .label-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+        .val-display { font-family: monospace; font-size: 14px; font-weight: bold; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        
+        /* 定制滑块颜色 */
+        #slider-v1 { accent-color: var(--v-carrier); }
+        #slider-v2 { accent-color: var(--v-relative); }
+        #slider-theta { accent-color: #facc15; }
+
+        /* 按钮组 */
+        .btn-group { display: flex; gap: 10px; margin-top: 20px; }
+        .btn {
+            flex: 1; padding: 10px; border: none; border-radius: 6px;
+            font-size: 14px; font-weight: bold; cursor: pointer; transition: 0.2s;
+            background: rgba(255,255,255,0.1); color: #fff;
+        }
+        .btn:hover { background: rgba(255,255,255,0.2); }
+        .btn.primary { background: var(--v-carrier); }
+        .btn.primary:hover { background: #2563eb; }
+
+        /* 数据监视面板 (右下角) */
+        #data-panel {
+            position: absolute; bottom: 20px; right: 20px; width: 280px;
+            background: var(--panel-bg); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+            padding: 20px; z-index: 10; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .data-row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 10px; align-items: center; }
+        .data-row:last-child { margin-bottom: 0; }
+        
+        /* 矢量标识 */
+        .vec-badge {
+            display: inline-block; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 12px; margin-right: 8px;
+        }
+        .bg-v1 { background: rgba(59, 130, 246, 0.2); color: var(--v-carrier); border: 1px solid var(--v-carrier); }
+        .bg-v2 { background: rgba(16, 185, 129, 0.2); color: var(--v-relative); border: 1px solid var(--v-relative); }
+        .bg-va { background: rgba(239, 68, 68, 0.2); color: var(--v-absolute); border: 1px solid var(--v-absolute); }
+
+        /* 物理公式区 */
+        .formula-box {
+            background: rgba(0,0,0,0.5); padding: 12px; border-radius: 8px;
+            text-align: center; font-family: 'Times New Roman', Times, serif;
+            font-size: 18px; font-weight: bold; margin-bottom: 16px; border: 1px dashed rgba(255,255,255,0.2);
+        }
+        .vec-symbol { display: inline-flex; flex-direction: column; align-items: center; }
+        .vec-arrow { font-size: 12px; line-height: 0.5; font-weight: normal; }
+        .vec-letter { font-style: italic; }
+
+    </style>
+</head>
+<body>
+
+    <canvas id="sim-canvas"></canvas>
+
+    <!-- 左上角：交互控制面板 -->
+    <div id="control-panel">
+        <div class="header">
+            <h1>伽利略速度变换定律</h1>
+            <p class="subtitle">航母与舰载机运动学仿真系统</p>
+        </div>
+
+        <div class="control-group">
+            <div class="label-row">
+                <span style="color: var(--v-carrier);">航母航速 (牵连速度 V₁)</span>
+                <span class="val-display" id="val-v1" style="color: var(--v-carrier);">15 m/s</span>
+            </div>
+            <input type="range" id="slider-v1" min="0" max="30" step="1" value="15">
+        </div>
+
+        <div class="control-group">
+            <div class="label-row">
+                <span style="color: var(--v-relative);">飞机起飞速度 (相对速度 V₂)</span>
+                <span class="val-display" id="val-v2" style="color: var(--v-relative);">60 m/s</span>
+            </div>
+            <input type="range" id="slider-v2" min="0" max="100" step="1" value="60">
+        </div>
+
+        <div class="control-group">
+            <div class="label-row">
+                <span style="color: #facc15;">斜角甲板起飞角度 (θ)</span>
+                <span class="val-display" id="val-theta" style="color: #facc15;">-9°</span>
+            </div>
+            <input type="range" id="slider-theta" min="-30" max="30" step="1" value="-9">
+        </div>
+
+        <div class="btn-group">
+            <button class="btn primary" id="btn-toggle">开始弹射起飞</button>
+            <button class="btn" id="btn-reset">复位重置</button>
+        </div>
+    </div>
+
+    <!-- 右下角：实时数据面板 -->
+    <div id="data-panel">
+        <div class="formula-box">
+            <div style="display: flex; align-items: baseline; justify-content: center; gap: 6px;">
+                <span class="vec-symbol" style="color: var(--v-absolute);"><span class="vec-arrow">→</span><span class="vec-letter">V</span><sub style="font-size:10px; font-style:normal;">绝对</sub></span>
+                <span style="color: #fff;">=</span>
+                <span class="vec-symbol" style="color: var(--v-carrier);"><span class="vec-arrow">→</span><span class="vec-letter">V</span><sub style="font-size:10px; font-style:normal;">1</sub></span>
+                <span style="color: #fff;">+</span>
+                <span class="vec-symbol" style="color: var(--v-relative);"><span class="vec-arrow">→</span><span class="vec-letter">V</span><sub style="font-size:10px; font-style:normal;">2</sub></span>
+            </div>
+        </div>
+
+        <div class="data-row">
+            <div><span class="vec-badge bg-v1">V₁</span>航母航速</div>
+            <div id="data-v1" style="font-family: monospace;">15.0 m/s</div>
+        </div>
+        <div class="data-row">
+            <div><span class="vec-badge bg-v2">V₂</span>相对起飞速度</div>
+            <div id="data-v2" style="font-family: monospace;">60.0 m/s</div>
+        </div>
+        <div class="data-row" style="border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 10px; margin-top: 10px;">
+            <div style="font-weight: bold;"><span class="vec-badge bg-va">V_abs</span>飞机绝对速度</div>
+            <div id="data-va" style="font-family: monospace; font-weight: bold; color: var(--v-absolute);">74.3 m/s</div>
+        </div>
+        <div class="data-row">
+            <div style="font-size: 12px; color: var(--text-muted); margin-left: 56px;">对地绝对航向角</div>
+            <div id="data-angle" style="font-family: monospace; font-size: 12px; color: var(--text-muted);">-7.2°</div>
+        </div>
+    </div>
+
+    <script>
+        // --- 物理系统引擎 ---
+        const canvas = document.getElementById('sim-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI 元素
+        const sliderV1 = document.getElementById('slider-v1');
+        const sliderV2 = document.getElementById('slider-v2');
+        const sliderTheta = document.getElementById('slider-theta');
+        const valV1 = document.getElementById('val-v1');
+        const valV2 = document.getElementById('val-v2');
+        const valTheta = document.getElementById('val-theta');
+        
+        const dataV1 = document.getElementById('data-v1');
+        const dataV2 = document.getElementById('data-v2');
+        const dataVa = document.getElementById('data-va');
+        const dataAngle = document.getElementById('data-angle');
+
+        const btnToggle = document.getElementById('btn-toggle');
+        const btnReset = document.getElementById('btn-reset');
+
+        // 物理变量与状态
+        let isRunning = false;
+        let time = 0; // 虚拟时间
+        let lastTimestamp = 0;
+
+        // 初始参数设定
+        let V1 = parseFloat(sliderV1.value);       // 航母速度 (牵连)
+        let V2 = parseFloat(sliderV2.value);       // 飞机相对速度
+        let ThetaDeg = parseFloat(sliderTheta.value); // 甲板角度(度)
+        let ThetaRad = ThetaDeg * Math.PI / 180;   // 弧度
+
+        // 视图与渲染参数
+        const SCALE = 4; // 1米 = 4像素
+        let carrierStartPos = { x: 200, y: 0 }; // y在resize时计算
+        
+        // 运动状态
+        let carrierPos = { x: 0, y: 0 };
+        let planePos = { x: 0, y: 0 };
+
+        // 初始化Canvas尺寸
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            carrierStartPos.y = canvas.height / 2;
+            resetSim();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- 物理计算逻辑 ---
+        function updatePhysics() {
+            // 读取 UI
+            V1 = parseFloat(sliderV1.value);
+            V2 = parseFloat(sliderV2.value);
+            ThetaDeg = parseFloat(sliderTheta.value);
+            ThetaRad = ThetaDeg * Math.PI / 180;
+
+            // 计算绝对速度 Va
+            // Va_x = V1 + V2 * cos(θ)
+            // Va_y = V2 * sin(θ)
+            const Va_x = V1 + V2 * Math.cos(ThetaRad);
+            const Va_y = V2 * Math.sin(ThetaRad);
+            const Va_mag = Math.sqrt(Va_x*Va_x + Va_y*Va_y);
+            const Va_angle = Math.atan2(Va_y, Va_x) * 180 / Math.PI;
+
+            // 更新数据面板
+            valV1.innerText = V1 + ' m/s';
+            valV2.innerText = V2 + ' m/s';
+            valTheta.innerText = (ThetaDeg > 0 ? '+' : '') + ThetaDeg + '°';
+
+            dataV1.innerText = V1.toFixed(1) + ' m/s';
+            dataV2.innerText = V2.toFixed(1) + ' m/s';
+            dataVa.innerText = Va_mag.toFixed(1) + ' m/s';
+            dataAngle.innerText = Va_angle.toFixed(1) + '°';
+
+            // 更新位置 (根据经过的时间)
+            carrierPos.x = carrierStartPos.x + (V1 * time) * SCALE;
+            carrierPos.y = carrierStartPos.y;
+
+            // 飞机相对于航母的位置
+            const relX = (V2 * Math.cos(ThetaRad) * time) * SCALE;
+            const relY = (V2 * Math.sin(ThetaRad) * time) * SCALE;
+            
+            // 飞机的绝对位置
+            planePos.x = carrierPos.x + relX;
+            planePos.y = carrierPos.y + relY;
+        }
+
+        // --- 渲染引擎核心 ---
+        function drawArrow(x, y, vx, vy, color, label) {
+            const mag = Math.sqrt(vx*vx + vy*vy);
+            if (mag < 0.1) return;
+            
+            // 矢量显示缩放系数 (让箭头长度看起来更直观，与真实比例尺解耦)
+            const vecScale = 2.0; 
+            const toX = x + vx * vecScale;
+            const toY = y + vy * vecScale;
+            
+            const headlen = 12;
+            const angle = Math.atan2(vy, vx);
+
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(toX, toY);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // 箭头
+            ctx.beginPath();
+            ctx.moveTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.lineTo(toX, toY);
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            // 标签
+            ctx.fillStyle = color;
+            ctx.font = "bold 14px 'Segoe UI'";
+            // 文本稍微偏移避免遮挡
+            const txtOffset = 20;
+            ctx.fillText(label, toX + Math.cos(angle)*txtOffset - 10, toY + Math.sin(angle)*txtOffset + 5);
+        }
+
+        function render() {
+            // 清空并绘制海面网格底图
+            ctx.fillStyle = '#0b1121';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制雷达网格
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.15)';
+            ctx.lineWidth = 1;
+            const gridSize = 50;
+            // 让网格随着航母的运动产生相对后退的视觉效果 (可选)
+            // const offsetX = -(carrierPos.x * 0.2) % gridSize;
+            const offsetX = 0; 
+            for (let i = offsetX; i < canvas.width; i += gridSize) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+            }
+            for (let i = 0; i < canvas.height; i += gridSize) {
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+            }
+
+            // --- 绘制航母 ---
+            ctx.save();
+            ctx.translate(carrierPos.x, carrierPos.y);
+            
+            // 航母舰体
+            ctx.fillStyle = '#334155';
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-150, -40);
+            ctx.lineTo(120, -40);
+            ctx.lineTo(160, 0);
+            ctx.lineTo(120, 40);
+            ctx.lineTo(-150, 40);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 航母跑道标线 (直通甲板)
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.setLineDash([10, 10]);
+            ctx.beginPath();
+            ctx.moveTo(-140, 0);
+            ctx.lineTo(140, 0);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 斜角甲板标线
+            ctx.rotate(ThetaRad);
+            ctx.strokeStyle = 'rgba(250, 204, 21, 0.4)'; // 黄色跑道线
+            ctx.setLineDash([15, 10]);
+            ctx.beginPath();
+            ctx.moveTo(-100, 0);
+            ctx.lineTo(80, 0);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+
+            // --- 绘制舰载机 ---
+            ctx.save();
+            ctx.translate(planePos.x, planePos.y);
+            // 飞机朝向 = 绝对速度的角度
+            const Va_x = V1 + V2 * Math.cos(ThetaRad);
+            const Va_y = V2 * Math.sin(ThetaRad);
+            const absAngle = Math.atan2(Va_y, Va_x);
+            
+            // 飞机本体形状 (简约三角战机)
+            ctx.rotate(absAngle);
+            ctx.fillStyle = '#f8fafc';
+            ctx.beginPath();
+            ctx.moveTo(20, 0);
+            ctx.lineTo(-10, -15);
+            ctx.lineTo(-5, 0);
+            ctx.lineTo(-10, 15);
+            ctx.closePath();
+            ctx.fill();
+            // 尾迹特效
+            if(isRunning && V2 > 0) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
+                ctx.beginPath();
+                ctx.arc(-8, 0, 4, 0, Math.PI*2);
+                ctx.fill();
+            }
+            ctx.restore();
+
+            // --- 绘制核心物理矢量 (极其关键的教学部分) ---
+            // 为了避免画面混乱，矢量统一挂载在舰载机上
+            
+            // 1. V1 牵连速度 (蓝色，始终向右)
+            drawArrow(planePos.x, planePos.y, V1, 0, '#3b82f6', 'V₁');
+            
+            // 2. V2 相对速度 (绿色，沿斜角甲板方向)
+            const v2_vx = V2 * Math.cos(ThetaRad);
+            const v2_vy = V2 * Math.sin(ThetaRad);
+            drawArrow(planePos.x, planePos.y, v2_vx, v2_vy, '#10b981', 'V₂');
+
+            // 3. Va 绝对速度 (红色，实际合成轨迹)
+            drawArrow(planePos.x, planePos.y, Va_x, Va_y, '#ef4444', 'Va');
+
+            // 4. 左下角绘制静态矢量三角形图解 (剥离运动学，只看几何)
+            drawVectorDiagram(Va_x, Va_y, v2_vx, v2_vy);
+        }
+
+        // 绘制静态矢量分析图（位于左下角，增强教学认知）
+        function drawVectorDiagram(Va_x, Va_y, v2_vx, v2_vy) {
+            const diagX = 80;
+            const diagY = canvas.height - 80;
+            
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+            ctx.beginPath();
+            ctx.roundRect(diagX - 60, diagY - 120, 300, 200, 10);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.stroke();
+            
+            ctx.fillStyle = '#fff';
+            ctx.font = "12px sans-serif";
+            ctx.fillText("空间矢量关系图解：", diagX - 40, diagY - 95);
+
+            // 以(diagX, diagY)为 V1的起点
+            const vScale = 1.2;
+            
+            // 画 V1 (牵连，蓝)
+            drawArrow(diagX, diagY, V1*vScale, 0, '#3b82f6', 'V₁');
+            
+            // 画 V2 (相对，绿) - 起点接在V1的终点，构成三角形法则
+            drawArrow(diagX + V1*vScale, diagY, v2_vx*vScale, v2_vy*vScale, '#10b981', 'V₂');
+            
+            // 画 Va (绝对，红) - 起点在原点，连接到V2的终点
+            drawArrow(diagX, diagY, Va_x*vScale, Va_y*vScale, '#ef4444', 'V_abs');
+
+            // 辅助虚线 (补全平行四边形)
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(diagX, diagY);
+            ctx.lineTo(diagX + v2_vx*vScale, diagY + v2_vy*vScale);
+            ctx.lineTo(diagX + Va_x*vScale, diagY + Va_y*vScale);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // --- 动画循环控制 ---
+        function animate(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const deltaTime = (timestamp - lastTimestamp) / 1000; // 转换为秒
+            lastTimestamp = timestamp;
+
+            if (isRunning) {
+                // 模型时间流逝 (减缓系数以便于肉眼观察)
+                time += deltaTime * 0.5; 
+                
+                // 如果飞机飞出屏幕太远，自动复位
+                if (planePos.x > canvas.width + 100) {
+                    resetSim(false); // 不重置运行状态
+                }
+            }
+            
+            updatePhysics();
+            render();
+            requestAnimationFrame(animate);
+        }
+
+        // --- 事件监听 ---
+        function resetSim(stopRunning = true) {
+            time = 0;
+            if (stopRunning) {
+                isRunning = false;
+                btnToggle.innerText = '开始弹射起飞';
+                btnToggle.classList.add('primary');
+                btnToggle.style.background = 'var(--v-carrier)';
+            }
+            updatePhysics();
+        }
+
+        btnToggle.addEventListener('click', () => {
+            isRunning = !isRunning;
+            if (isRunning) {
+                btnToggle.innerText = '暂停仿真';
+                btnToggle.classList.remove('primary');
+                btnToggle.style.background = '#f59e0b'; // 暂停黄
+                lastTimestamp = performance.now();
+            } else {
+                btnToggle.innerText = '继续起飞';
+                btnToggle.classList.add('primary');
+                btnToggle.style.background = 'var(--v-relative)'; // 继续绿
+            }
+        });
+
+        btnReset.addEventListener('click', () => resetSim(true));
+
+        // 滑块实时交互反馈
+        [sliderV1, sliderV2, sliderTheta].forEach(slider => {
+            slider.addEventListener('input', () => {
+                updatePhysics();
+                // 拖动滑块时如果是暂停状态，也会实时渲染一帧
+                if(!isRunning) render(); 
+            });
+        });
+
+        // 启动！
+        resizeCanvas();
+        requestAnimationFrame(animate);
+
+    </script>
+</body>
+</html>

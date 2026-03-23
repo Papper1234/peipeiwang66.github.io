@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>物理仿真：炮车反冲模型与相对速度动量守恒</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: 'Segoe UI', Tahoma, Verdana, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; z-index: 1;}
+        
+        #ui-panel {
+            position: absolute; top: 15px; left: 15px; width: 480px;
+            background: rgba(15, 20, 25, 0.92); backdrop-filter: blur(10px);
+            color: #eee; padding: 25px; border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8); z-index: 10;
+            border: 1px solid #445; max-height: 92vh; overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+        
+        #ui-panel::-webkit-scrollbar { width: 6px; }
+        #ui-panel::-webkit-scrollbar-thumb { background: #556; border-radius: 3px; }
+
+        h2 { margin-top: 0; color: #4da6ff; font-size: 20px; border-bottom: 1px solid #445; padding-bottom: 10px;}
+        
+        .btn-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+        .stage-btn {
+            background: #2a4b7c; color: white; border: none; padding: 10px 0;
+            border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s;
+            flex: 1 1 30%; font-size: 13px; text-align: center; border: 1px solid #456;
+        }
+        .stage-btn:hover { background: #3b68ab; }
+        .stage-btn.active { background: #00ff88; color: #000; box-shadow: 0 0 12px rgba(0,255,136,0.6); border-color: #00ff88;}
+        
+        .btn-auto { flex: 1 1 100%; background: #c28b00; font-size: 15px;}
+        .btn-auto:hover { background: #e6a400; }
+        .reset-btn { flex: 1 1 100%; background: #883333; }
+        .reset-btn:hover { background: #aa4444; }
+
+        .analysis-box { 
+            background: rgba(0,0,0,0.4); padding: 15px; border-radius: 8px; 
+            margin-top: 15px; border-left: 4px solid #4da6ff; display: none; 
+            animation: fadeIn 0.4s ease-out;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .analysis-box.active { display: block; }
+        .analysis-box h3 { margin: 0 0 8px 0; color: #fff; font-size: 16px;}
+        .analysis-box p { margin: 0 0 10px 0; font-size: 13.5px; line-height: 1.6; color: #ddd;}
+        
+        .formula { 
+            background: #000; padding: 12px; border-radius: 5px; 
+            font-family: 'Times New Roman', Times, serif; color: #00ffcc; 
+            font-size: 17px; margin: 10px 0; line-height: 1.8; letter-spacing: 0.5px;
+            border: 1px dashed #445; text-align: center; overflow-x: auto;
+        }
+        .highlight-text { color: #ff5555; font-weight: bold; }
+        .highlight-blue { color: #4da6ff; font-weight: bold; }
+        
+        /* CSS 渲染分式 */
+        .frac { display: inline-block; vertical-align: middle; text-align: center; font-size: 0.9em; margin: 0 4px; line-height: 1.2;}
+        .frac > span { display: block; padding: 2px 4px; }
+        .frac > span.bottom { border-top: 1px solid currentColor; }
+
+        /* 物理受力矢量标签样式 */
+        .vector-label {
+            color: #fff; font-weight: bold; font-size: 18px; font-style: italic;
+            text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+            pointer-events: none; margin-top: -15px; white-space: nowrap;
+        }
+        .vector-label sub { font-size: 12px; }
+    </style>
+    
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+</head>
+<body>
+
+    <div id="ui-panel">
+        <h2>炮车反冲：动量守恒 (相对速度模型)</h2>
+        
+        <div class="btn-group">
+            <button class="stage-btn btn-auto" id="btn-auto">▶ 完整自动演示</button>
+            <button class="stage-btn" id="btn-s0">1. 静止瞄准</button>
+            <button class="stage-btn" id="btn-s1">2. 瞬间开炮</button>
+            <button class="stage-btn" id="btn-s2">3. 反冲与飞行</button>
+            <button class="stage-btn reset-btn" id="btn-reset">↺ 重置系统</button>
+        </div>
+
+        <div class="analysis-box active" id="info-s0">
+            <h3>过程一：初始静止状态</h3>
+            <p>系统（炮车 M + 炮弹 m）静止在光滑水平地面上。炮管仰角为 θ。<br>
+            受力分析：系统受到向下的总重力，以及地面向上的静态支持力，二者平衡。</p>
+            <div class="formula">
+                P<sub>初始</sub> = 0 <br>
+                N = (M + m)g
+            </div>
+        </div>
+
+        <div class="analysis-box" id="info-s1">
+            <h3>过程二：瞬间开炮 (核心疑点解答)</h3>
+            <p><span class="highlight-text">为何竖直动量不守恒？</span><br>
+            开炮瞬间内力巨大，炮车猛烈压迫地面。地面产生远超重力的<b>巨大脉冲支持力 N'</b>，这是一个未平衡的外部冲量，打破了竖直动量守恒。</p>
+            <p><span class="highlight-blue">为何水平动量守恒？</span><br>
+            不计地面摩擦，系统在水平方向上<b>没有任何外力作用</b>，因此水平方向动量严格守恒。</p>
+        </div>
+
+        <div class="analysis-box" id="info-s2">
+            <h3>过程三：反冲运动与推导 (绝对速度变换)</h3>
+            <p>注意：出口速度 v 是炮弹<b>相对于炮车</b>的速度。设向右为正方向：<br>
+            炮车对地速度 = -V<br>
+            炮弹对地水平速度 = <b>v·cosθ - V</b></p>
+            <p>基于<b>水平方向动量守恒</b>建立地面系方程：</p>
+            <div class="formula" style="font-size: 16px;">
+                P<sub>初始,x</sub> = P<sub>最终,x</sub><br>
+                0 = m(v·cosθ - V) - MV
+            </div>
+            <p>移项合并同类项，解得炮车的反冲速度 V：</p>
+            <div class="formula">
+                V = <div class="frac"><span>m</span><span class="bottom">M + m</span></div> v cosθ
+            </div>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- 物理参数与系统计算 ---
+        const g = 9.8;
+        const M = 10.0; // 炮车质量
+        const m = 1.0;  // 炮弹质量
+        const v_rel = 20.0; // 炮弹相对炮筒的出口初速度
+        const theta = 35 * Math.PI / 180; // 发射仰角 35度
+        
+        // 【核心修正】计算相对速度模型下的反冲速度和对地绝对速度
+        const V_recoil = (m * v_rel * Math.cos(theta)) / (M + m); 
+        const v_abs_x = v_rel * Math.cos(theta) - V_recoil; // 炮弹对地绝对水平速度
+        const v_abs_y = v_rel * Math.sin(theta);            // 炮车竖直无运动，竖直绝对速度即相对速度
+        
+        let currentState = 0; 
+        let autoPlay = false;
+        let pauseTimer = 0;
+        let t_fly = 0; // 炮弹飞行时间
+        
+        // --- 3D 场景初始化 ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x111111, 30, 150);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(0, 15, 45);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 5, 0);
+        controls.enableDamping = true;
+
+        scene.add(new THREE.AmbientLight(0x666666));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 30, 20);
+        scene.add(dirLight);
+
+        // --- 建立 3D 模型 ---
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshPhongMaterial({color: 0x334433}));
+        ground.rotation.x = -Math.PI / 2;
+        scene.add(ground);
+        const grid = new THREE.GridHelper(200, 100, 0x000000, 0x000000);
+        grid.material.opacity = 0.2; grid.material.transparent = true;
+        scene.add(grid);
+
+        const cannonGroup = new THREE.Group();
+        scene.add(cannonGroup);
+        
+        const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 3), new THREE.MeshPhongMaterial({color: 0x4a5a3a}));
+        baseMesh.position.y = 1;
+        cannonGroup.add(baseMesh);
+        
+        const wheelGeo = new THREE.CylinderGeometry(0.8, 0.8, 0.4, 16).rotateX(Math.PI/2);
+        const wheelMat = new THREE.MeshPhongMaterial({color: 0x222222});
+        for(let x of [-1.2, 1.2]) {
+            for(let z of [-1.6, 1.6]) {
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                wheel.position.set(x, 0.8, z);
+                cannonGroup.add(wheel);
+            }
+        }
+
+        const barrelLength = 6;
+        const barrelGeo = new THREE.CylinderGeometry(0.6, 0.4, barrelLength, 16);
+        barrelGeo.translate(0, barrelLength/2, 0); 
+        const barrel = new THREE.Mesh(barrelGeo, new THREE.MeshPhongMaterial({color: 0x3a4a2a}));
+        barrel.position.set(0, 2, 0);
+        barrel.rotation.z = -Math.PI/2 + theta; 
+        cannonGroup.add(barrel);
+
+        const shell = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), new THREE.MeshPhongMaterial({color: 0xff4400}));
+        scene.add(shell);
+
+        function getMuzzlePos() {
+            const cx = cannonGroup.position.x;
+            const cy = 2; 
+            const x = cx + barrelLength * Math.cos(theta);
+            const y = cy + barrelLength * Math.sin(theta);
+            return new THREE.Vector3(x, y, 0);
+        }
+
+        // --- 受力矢量箭头系统 (严格的 DOM 控制) ---
+        const vectorsGroup = new THREE.Group();
+        scene.add(vectorsGroup);
+
+        function createForceArrow(colorHex, labelHtml) {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshBasicMaterial({color: colorHex});
+            const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1), mat);
+            const head = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.6), mat);
+            group.add(shaft); group.add(head);
+
+            const div = document.createElement('div');
+            div.className = `vector-label`;
+            const label = new THREE.CSS2DObject(div);
+            group.add(label);
+
+            group.updateForceState = function(len, angleZ, isVisible) {
+                if(!isVisible || len <= 0) { 
+                    shaft.visible = false; head.visible = false;
+                    div.innerHTML = ''; div.style.display = 'none'; 
+                    return; 
+                }
+                shaft.visible = true; head.visible = true;
+                div.innerHTML = `<span style="color:#${colorHex.toString(16).padStart(6,'0')}">${labelHtml}</span>`; 
+                div.style.display = 'block';
+
+                shaft.scale.y = len;
+                shaft.position.y = len / 2;
+                head.position.y = len + 0.3; 
+                label.position.y = len + 1.2;
+                
+                group.rotation.z = angleZ;
+            };
+            
+            group.updateForceState(0, 0, false); 
+            vectorsGroup.add(group);
+            return group;
+        }
+
+        const f_G_sys = createForceArrow(0x55ff55, '(M+m)g'); 
+        const f_N_static = createForceArrow(0x55aaff, 'N = (M+m)g'); 
+        const f_N_impulse = createForceArrow(0xff3333, "巨大的瞬时支持力 N'"); 
+        
+        const f_exp_shell = createForceArrow(0xffaa00, 'F<sub>内力</sub> (推炮弹)'); 
+        const f_exp_cannon = createForceArrow(0xffaa00, 'F\'<sub>内力</sub> (压炮车)'); 
+        
+        const f_G_cannon = createForceArrow(0x55ff55, 'Mg');
+        const f_N_cannon = createForceArrow(0x55aaff, 'N = Mg');
+        const f_G_shell = createForceArrow(0x55ff55, 'mg');
+        
+        const v_cannon = createForceArrow(0xccccff, 'V (反冲)');
+        const v_shell = createForceArrow(0xffcccc, 'v<sub>绝对</sub> (对地)');
+
+        function updateSceneElements() {
+            const cPos = cannonGroup.position;
+            const sPos = shell.position;
+            const pivotY = 2; 
+
+            [f_G_sys, f_N_static, f_N_impulse, f_exp_shell, f_exp_cannon, f_G_cannon, f_N_cannon, f_G_shell, v_cannon, v_shell].forEach(f => f.updateForceState(0, 0, false));
+
+            if (currentState === 0) {
+                shell.position.copy(getMuzzlePos()); 
+                
+                f_G_sys.position.set(cPos.x, pivotY, 0);
+                f_G_sys.updateForceState(4, Math.PI, true); 
+                f_N_static.position.set(cPos.x, 0, 0);
+                f_N_static.updateForceState(4, 0, true); 
+            } 
+            else if (currentState === 1) {
+                shell.position.copy(getMuzzlePos());
+                
+                const expLen = 6;
+                f_exp_shell.position.copy(shell.position);
+                f_exp_shell.updateForceState(expLen, theta - Math.PI/2, true); 
+                
+                f_exp_cannon.position.set(cPos.x, pivotY, 0);
+                f_exp_cannon.updateForceState(expLen, theta + Math.PI/2, true); 
+                
+                f_N_impulse.position.set(cPos.x, 0, 0);
+                f_N_impulse.updateForceState(8, 0, true); 
+            }
+            else if (currentState === 2) {
+                f_G_cannon.position.set(cPos.x, pivotY, 0);
+                f_G_cannon.updateForceState(3, Math.PI, true);
+                f_N_cannon.position.set(cPos.x, 0, 0);
+                f_N_cannon.updateForceState(3, 0, true);
+                
+                f_G_shell.position.copy(sPos);
+                f_G_shell.updateForceState(2, Math.PI, true); 
+                
+                v_cannon.position.set(cPos.x, 3.5, 0);
+                v_cannon.updateForceState(3, Math.PI/2, true); 
+                
+                // 使用绝对速度计算切线角度
+                const cur_vy = v_abs_y - g * t_fly;
+                const v_angle = Math.atan2(cur_vy, v_abs_x);
+                v_shell.position.copy(sPos);
+                v_shell.updateForceState(3, v_angle - Math.PI/2, true); 
+            }
+        }
+
+        // --- 物理运动学循环 ---
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            let dt = clock.getDelta();
+            dt = Math.min(dt, 0.05); 
+
+            if (currentState === 1 && autoPlay) {
+                pauseTimer -= dt;
+                if (pauseTimer <= 0) switchState(2, true);
+            }
+            else if (currentState === 2) {
+                t_fly += dt * 1.5; 
+                
+                // 炮车匀速反冲 (向左)
+                cannonGroup.position.x = -V_recoil * t_fly;
+                
+                // 炮弹斜抛运动 (基于对地绝对速度)
+                const muzzle_x0 = barrelLength * Math.cos(theta); 
+                const muzzle_y0 = 2 + barrelLength * Math.sin(theta);
+                
+                shell.position.x = muzzle_x0 + v_abs_x * t_fly;
+                shell.position.y = muzzle_y0 + v_abs_y * t_fly - 0.5 * g * t_fly * t_fly;
+                
+                if(shell.position.y < 0.4) {
+                    shell.position.y = 0.4;
+                }
+            }
+
+            updateSceneElements();
+            controls.update();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        // --- UI 控制机 ---
+        function switchState(state, isAuto = false) {
+            if (!isAuto) autoPlay = false; 
+            currentState = state;
+            
+            document.querySelectorAll('.stage-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-s${state}`).classList.add('active');
+            if(autoPlay) document.getElementById('btn-auto').classList.add('active');
+
+            document.querySelectorAll('.analysis-box').forEach(b => b.classList.remove('active'));
+            for (let i = 0; i <= state; i++) {
+                document.getElementById(`info-s${i}`).classList.add('active');
+            }
+            setTimeout(() => { const p = document.getElementById('ui-panel'); p.scrollTop = p.scrollHeight; }, 50);
+
+            if (state === 0) {
+                cannonGroup.position.x = 0;
+                t_fly = 0;
+                shell.position.copy(getMuzzlePos());
+            } else if (state === 1) {
+                cannonGroup.position.x = 0;
+                t_fly = 0;
+                shell.position.copy(getMuzzlePos());
+            } else if (state === 2) {
+                if(!isAuto && t_fly === 0) {
+                    cannonGroup.position.x = 0;
+                }
+            }
+            updateSceneElements();
+        }
+
+        document.getElementById('btn-auto').onclick = () => { 
+            switchState(0, true); 
+            autoPlay = true; 
+            setTimeout(() => {
+                if(!autoPlay) return;
+                switchState(1, true);
+                pauseTimer = 1.8; 
+            }, 800);
+        };
+        document.getElementById('btn-s0').onclick = () => switchState(0);
+        document.getElementById('btn-s1').onclick = () => switchState(1);
+        document.getElementById('btn-s2').onclick = () => switchState(2);
+        document.getElementById('btn-reset').onclick = () => switchState(0);
+
+        switchState(0);
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight); labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        animate();
+    </script>
+</body>
+</html>

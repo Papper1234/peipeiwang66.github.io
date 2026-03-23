@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大学物理 - 动力学科技图谱 (终极专业版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        /* 科技感深黑背景 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #0a192f 0%, #000000 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #main { width: 100%; height: 100%; }
+
+        /* 界面左上角 HUD 提示面板 */
+        #hud-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(4, 21, 40, 0.7);
+            border-left: 4px solid #00f2fe;
+            border-top: 1px solid rgba(0, 242, 254, 0.3);
+            border-bottom: 1px solid rgba(0, 242, 254, 0.3);
+            border-right: 1px solid rgba(0, 242, 254, 0.3);
+            padding: 15px 25px;
+            border-radius: 4px;
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.15);
+            pointer-events: none;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            color: #e0f7fa;
+        }
+        #hud-panel h2 { margin: 0 0 8px 0; font-size: 18px; color: #00f2fe; text-shadow: 0 0 8px #00f2fe; }
+        #hud-panel p { margin: 4px 0; font-size: 13px; color: #88c0d0; }
+
+        /* Tooltip 悬浮框样式 */
+        .tech-tooltip {
+            background: rgba(5, 15, 25, 0.95) !important;
+            border: 1px solid #00f2fe !important;
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.3) !important;
+            border-radius: 6px !important;
+            padding: 15px !important;
+            max-width: 350px;
+            white-space: normal !important; 
+            word-wrap: break-word;
+            word-break: break-all;
+            backdrop-filter: blur(10px);
+        }
+        .tech-tooltip .node-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #00f2fe;
+            margin-bottom: 10px;
+            text-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
+            border-bottom: 1px solid rgba(0, 242, 254, 0.3);
+            padding-bottom: 6px;
+        }
+        .tech-tooltip .node-desc {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #b0c4de;
+            margin: 0 0 12px 0;
+            padding: 0;
+            text-align: left;
+        }
+
+        /* 公式渲染外框 */
+        .formula-box {
+            background: rgba(0, 242, 254, 0.05);
+            border-radius: 4px;
+            padding: 12px 10px;
+            border-left: 3px solid #00f2fe;
+            display: flex;
+            flex-direction: column; 
+            gap: 12px;
+        }
+        .formula-row {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 18px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            letter-spacing: 1px;
+            width: 100%;
+            min-height: 24px;
+        }
+
+        /* --- 核心优化：物理符号排版 --- */
+        .vec {
+            display: inline-block;
+            position: relative;
+            font-style: italic;
+            font-weight: bold;
+            margin: 0 3px;
+            line-height: 1;
+        }
+        .vec::after {
+            content: '→';
+            position: absolute;
+            top: -0.65em;
+            left: 50%;
+            transform: translateX(-50%) scale(0.65);
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        .math-frac {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            vertical-align: middle;
+            margin: 0 6px;
+            font-size: 0.9em;
+            line-height: 1;
+        }
+        .frac-top { padding: 0 2px; }
+        .frac-line {
+            width: 100%;
+            height: 1px;
+            background-color: #fff;
+            margin: 3px 0;
+        }
+        .frac-bot { padding: 0 2px; }
+        
+        sub { bottom: -0.25em; font-size: 0.75em; margin-left: 1px; }
+        sup { top: -0.4em; font-size: 0.75em; margin-left: 1px; }
+        .operator { margin: 0 5px; }
+        .symbol { font-family: "Courier New", Courier, monospace; font-size: 1.2em; margin: 0 2px; }
+    </style>
+</head>
+<body>
+
+    <div id="hud-panel">
+        <h2>物理引擎 - 动力学</h2>
+        <p>核心模块: 质点与质点系</p>
+        <p>[🖱️] 滚轮：全息缩放图谱</p>
+        <p>[🤚] 拖拽：引力漫游节点</p>
+        <p>[🎯] 悬浮：解析底层公式推导</p>
+    </div>
+    
+    <div id="main"></div>
+
+    <script>
+        var myChart = echarts.init(document.getElementById('main'));
+        
+        // 颜色体系：动力学风格（黄、橙、红、紫、蓝）
+        const colors = ['#e63946', '#f4a261', '#e9c46a', '#2a9d8f', '#457b9d', '#9b5de5', '#00f2fe'];
+
+        // --- HTML 公式生成器 ---
+        const vec = (letter) => `<span class="vec">${letter}</span>`; 
+        const frac = (top, bottom) => `<span class="math-frac"><span class="frac-top">${top}</span><span class="frac-line"></span><span class="frac-bot">${bottom}</span></span>`;
+        const op = (char) => `<span class="operator">${char}</span>`;
+        const sym = (char) => `<span class="symbol">${char}</span>`;
+
+        // --- 物理知识库数据 ---
+        const nodesData = [
+            { id: '0', name: '质点系动力学', symbolSize: 85, category: 0, 
+              desc: '研究物体受力与其运动状态变化之间关系的科学，构成了经典力学的核心骨架。' },
+
+            // 1. 牛顿定律与基本力
+            { id: '1', name: '牛顿运动定律', symbolSize: 65, category: 1, desc: '经典力学的三大基本公理体系，仅在惯性参考系中成立。' },
+            { id: '1-1', name: '牛顿第一定律', symbolSize: 40, category: 1, desc: '任何物体都保持静止或匀速直线运动的状态，直到受到外力迫使它改变这种状态为止。（惯性定律）' },
+            { id: '1-2', name: '牛顿第二定律', symbolSize: 50, category: 1, 
+              desc: '物体动量随时间的变化率等于它所受的合外力。当质量不变时，表现为 F=ma。',
+              formula: [
+                  `${vec('F')}${op('=')}${frac('d'+vec('p'), 'dt')}`,
+                  `${vec('F')}${op('=')}m${vec('a')}`
+              ]},
+            { id: '1-3', name: '牛顿第三定律', symbolSize: 40, category: 1, 
+              desc: '两个物体之间的作用力和反作用力，总是大小相等、方向相反，且作用在同一直线上。',
+              formula: [`${vec('F')}<sub>12</sub>${op('=')}${op('-')}${vec('F')}<sub>21</sub>`] },
+            
+            { id: '1-4', name: '四种基本力', symbolSize: 50, category: 1, desc: '自然界中所有的相互作用都可归结为四种基本微观相互作用。' },
+            { id: '1-4-1', name: '万有引力', symbolSize: 35, category: 1, desc: '有质量的物体间的相互吸引力，宏观主导力。', formula: [`F${op('=')}G${frac('m<sub>1</sub>m<sub>2</sub>', 'r²')}`] },
+            { id: '1-4-2', name: '电磁力', symbolSize: 35, category: 1, desc: '电荷间的相互作用，决定了日常物质的结构和化学性质。' },
+            { id: '1-4-3', name: '强相互作用', symbolSize: 35, category: 1, desc: '将质子和中子结合在原子核内的力，短程力但极强。' },
+            { id: '1-4-4', name: '弱相互作用', symbolSize: 35, category: 1, desc: '导致放射性衰变（如β衰变）的相互作用，短程力。' },
+
+            // 1-5 常见的力 (新增模块)
+            { id: '1-5', name: '常见的宏观力', symbolSize: 50, category: 1, desc: '经典力学问题中，物体间相互作用在宏观层面的具体表现形式。' },
+            { id: '1-5-1', name: '重力 (G)', symbolSize: 35, category: 1, 
+              desc: '地球对表面物体的万有引力表现，方向竖直向下。',
+              formula: [`${vec('G')}${op('=')}m${vec('g')}`] },
+            { id: '1-5-2', name: '弹力 (F)', symbolSize: 35, category: 1, 
+              desc: '物体发生弹性形变后力图恢复原状而产生的力（包括支持力、张力等）。胡克定律描述了理想弹簧的弹力。',
+              formula: [`${vec('F')}${op('=')}${op('-')}k${vec('x')}`] },
+            { id: '1-5-3', name: '摩擦力 (f)', symbolSize: 35, category: 1, 
+              desc: '阻碍接触面相对运动或相对运动趋势的力。分为静摩擦与滑动摩擦。',
+              formula: [
+                  `f<sub>k</sub>${op('=')}μ<sub>k</sub>N  (滑动)`,
+                  `f<sub>s</sub>${op('≤')}μ<sub>s</sub>N  (静摩擦)`
+              ] },
+            { id: '1-5-4', name: '约束力', symbolSize: 35, category: 1, desc: '限制物体自由运动的力，如绳子张力(T)、轨道支持力(N)，属于被动力，其大小由系统的运动状态和主动力决定。' },
+
+            // 2. 动量定理与守恒
+            { id: '2', name: '动量与冲量', symbolSize: 60, category: 2, desc: '描述物体运动量的大小以及力在时间上的累积效应。' },
+            { id: '2-1', name: '动量 (p)', symbolSize: 45, category: 2, 
+              desc: '物体的质量与其速度的乘积，是矢量。描述物体的平动状态。',
+              formula: [`${vec('p')}${op('=')}m${vec('v')}`] },
+            { id: '2-2', name: '冲量 (I)', symbolSize: 45, category: 2, 
+              desc: '力对时间的积分，是矢量。反映力在一段时间内的积累效应。',
+              formula: [`${vec('I')}${op('=')}${sym('∫')} ${vec('F')} dt`] },
+            { id: '2-3', name: '动量定理', symbolSize: 55, category: 2, 
+              desc: '质点（系）所受合外力的冲量，等于其动量的增量。',
+              formula: [`${sym('∫')} ${vec('F')} dt${op('=')}Δ${vec('p')}${op('=')}${vec('p')}<sub>2</sub>${op('-')}${vec('p')}<sub>1</sub>`] },
+            { id: '2-4', name: '动量守恒定律', symbolSize: 55, category: 2, 
+              desc: '当系统不受外力或合外力为零时，系统的总动量保持不变。自然界最普遍的守恒律之一。',
+              formula: [`${sym('Σ')}${vec('p')}<sub>i</sub>${op('=')}常量  (当 ${sym('Σ')}${vec('F')}<sub>ext</sub>${op('=')}0)`] },
+
+            // 3. 功与能
+            { id: '3', name: '功与能', symbolSize: 60, category: 3, desc: '能量转化与守恒是物理学的核心视角，描述力在空间上的累积效应。' },
+            { id: '3-1', name: '功 (W)', symbolSize: 45, category: 3, 
+              desc: '力对空间位移的积分。标量，有正负。',
+              formula: [`W${op('=')}${sym('∫')} ${vec('F')}${sym('·')}d${vec('r')}`] },
+            { id: '3-2', name: '动能 (Ek)', symbolSize: 45, category: 3, 
+              desc: '物体由于运动而具有的能量。',
+              formula: [`E<sub>k</sub>${op('=')}${frac('1', '2')}mv²`] },
+            { id: '3-3', name: '动能定理', symbolSize: 55, category: 3, 
+              desc: '所有力（包括内外力、保守与非保守力）对质点系所做的总功，等于质点系动能的增量。',
+              formula: [`W<sub>总</sub>${op('=')}E<sub>k2</sub>${op('-')}E<sub>k1</sub>${op('=')}ΔE<sub>k</sub>`] },
+            { id: '3-4', name: '势能 (Ep)', symbolSize: 45, category: 3, 
+              desc: '由保守力决定的，与质点相对位置有关的能量（如重力势能、弹性势能）。',
+              formula: [`W<sub>保守力</sub>${op('=')}${op('-')}ΔE<sub>p</sub>`] },
+            { id: '3-5', name: '功能原理', symbolSize: 55, category: 3, 
+              desc: '外力所做的功与非保守内力所做的功之和，等于系统机械能（动能+势能）的增量。',
+              formula: [`W<sub>外</sub>${op('+')}W<sub>非保守内</sub>${op('=')}ΔE`] },
+            { id: '3-6', name: '机械能守恒', symbolSize: 55, category: 3, 
+              desc: '当只有保守内力做功时，系统的动能与势能相互转化，但总机械能保持不变。',
+              formula: [`E<sub>k</sub>${op('+')}E<sub>p</sub>${op('=')}常量`] },
+
+            // 4. 碰撞
+            { id: '4', name: '碰撞', symbolSize: 60, category: 4, desc: '物体间极短时间内的强烈相互作用。内力远大于外力，通常认为动量守恒。' },
+            { id: '4-1', name: '完全弹性碰撞', symbolSize: 40, category: 4, desc: '动量守恒，且机械能（动能）完全守恒，无能量损失，恢复系数 e=1。' },
+            { id: '4-2', name: '完全非弹性碰撞', symbolSize: 40, category: 4, desc: '碰撞后两物体粘合在一起以相同速度运动。动量守恒，但动能损失最大，恢复系数 e=0。' },
+            { id: '4-3', name: '一般非弹性碰撞', symbolSize: 40, category: 4, desc: '动量守恒，动能有部分损失，0 < e < 1。' },
+
+            // 5. 角动量
+            { id: '5', name: '角动量定律', symbolSize: 60, category: 5, desc: '描述物体转动状态的动力学规律。' },
+            { id: '5-1', name: '力矩 (M)', symbolSize: 45, category: 5, 
+              desc: '力对特定参考点产生的转动效应，位矢与力的叉乘。',
+              formula: [`${vec('M')}${op('=')}${vec('r')}${sym('×')}${vec('F')}`] },
+            { id: '5-2', name: '角动量 (L)', symbolSize: 45, category: 5, 
+              desc: '描述物体转动状态的矢量（又称动量矩），位矢与动量的叉乘。',
+              formula: [`${vec('L')}${op('=')}${vec('r')}${sym('×')}${vec('p')}`] },
+            { id: '5-3', name: '角动量定理', symbolSize: 55, category: 5, 
+              desc: '质点（系）受到的合外力矩，等于其角动量随时间的变化率。',
+              formula: [`${sym('Σ')}${vec('M')}<sub>ext</sub>${op('=')}${frac('d'+vec('L'), 'dt')}`] },
+            { id: '5-4', name: '角动量守恒', symbolSize: 55, category: 5, 
+              desc: '当系统受到的合外力矩为零时，系统的总角动量保持不变。',
+              formula: [`${vec('L')}${op('=')}常量  (当 ${sym('Σ')}${vec('M')}<sub>ext</sub>${op('=')}0)`] }
+        ];
+
+        // --- 有向连线与逻辑推导关系 ---
+        const linksData = [
+            // 主分类骨架
+            { source: '0', target: '1' }, { source: '0', target: '2' }, { source: '0', target: '3' },
+            { source: '0', target: '4' }, { source: '0', target: '5' },
+            
+            // 1. 牛顿力学展开
+            { source: '1', target: '1-1' }, { source: '1', target: '1-2' }, { source: '1', target: '1-3' },
+            { source: '1', target: '1-4' }, { source: '1', target: '1-5' },
+            { source: '1-4', target: '1-4-1' }, { source: '1-4', target: '1-4-2' }, { source: '1-4', target: '1-4-3' }, { source: '1-4', target: '1-4-4' },
+            { source: '1-5', target: '1-5-1' }, { source: '1-5', target: '1-5-2' }, { source: '1-5', target: '1-5-3' }, { source: '1-5', target: '1-5-4' },
+
+            // ★ 新增彩蛋：微观基本力到宏观力的本质映射 (蓝色点划线)
+            { source: '1-4-1', target: '1-5-1', value: '表面近似', symbol: ['none', 'arrow'], symbolSize: [0, 8], lineStyle: { color: '#00e1fd', width: 1.5, type: 'dotted' } }, 
+            { source: '1-4-2', target: '1-5-2', value: '微观本质', symbol: ['none', 'arrow'], symbolSize: [0, 8], lineStyle: { color: '#00e1fd', width: 1.5, type: 'dotted' } }, 
+            { source: '1-4-2', target: '1-5-3', value: '微观本质', symbol: ['none', 'arrow'], symbolSize: [0, 8], lineStyle: { color: '#00e1fd', width: 1.5, type: 'dotted' } }, 
+
+            // 2. 动量展开
+            { source: '2', target: '2-1' }, { source: '2', target: '2-2' }, { source: '2', target: '2-3' }, { source: '2', target: '2-4' },
+            { source: '2-1', target: '2-3' }, { source: '2-2', target: '2-3' },
+
+            // 3. 功与能展开
+            { source: '3', target: '3-1' }, { source: '3', target: '3-2' }, { source: '3', target: '3-4' },
+            { source: '3-1', target: '3-3' }, { source: '3-2', target: '3-3' }, 
+            { source: '3-3', target: '3-5' }, { source: '3-4', target: '3-5' }, 
+
+            // 4. 碰撞展开
+            { source: '4', target: '4-1' }, { source: '4', target: '4-2' }, { source: '4', target: '4-3' },
+
+            // 5. 角动量展开
+            { source: '5', target: '5-1' }, { source: '5', target: '5-2' }, { source: '5', target: '5-3' }, { source: '5', target: '5-4' },
+            { source: '5-1', target: '5-3' }, { source: '5-2', target: '5-3' },
+
+            // ★★★ 核心跨模块逻辑推导线 (红色虚线 + 箭头) ★★★
+            { source: '1-2', target: '2-3', value: '对时间积分', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } }, 
+            { source: '1-2', target: '3-3', value: '对位移积分', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            { source: '2-3', target: '2-4', value: '合外力为0', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            { source: '3-5', target: '3-6', value: '非保守力做功为0', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            { source: '5-3', target: '5-4', value: '外力矩为0', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            { source: '2-4', target: '4', value: '内力远大于外力', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            { source: '3-6', target: '4-1', value: '动能无损耗', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } }
+        ];
+
+        // --- 图表配置 ---
+        const option = {
+            backgroundColor: 'transparent',
+            tooltip: {
+                show: true,
+                trigger: 'item',
+                enterable: true,
+                formatter: function (params) {
+                    if (params.dataType === 'node') {
+                        let data = params.data;
+                        let html = `<div class="tech-tooltip">
+                                        <div class="node-title">${data.name}</div>
+                                        <div class="node-desc">${data.desc || ''}</div>`;
+                        
+                        if (data.formula && data.formula.length > 0) {
+                            html += `<div class="formula-box">`;
+                            data.formula.forEach(f => {
+                                html += `<div class="formula-row">${f}</div>`;
+                            });
+                            html += `</div>`;
+                        }
+                        html += `</div>`;
+                        return html;
+                    }
+                    if (params.dataType === 'edge') {
+                        let isCore = params.data.lineStyle && params.data.lineStyle.color === '#ff4d4f';
+                        let color = isCore ? '#ff4d4f' : '#00f2fe';
+                        return `<div class="tech-tooltip"><div class="node-title" style="margin:0;border:none;padding:0;color:${color}">物理逻辑: ${params.data.value || '分类体系'}</div></div>`;
+                    }
+                },
+                backgroundColor: 'transparent',
+                borderWidth: 0,
+                padding: 0,
+                extraCssText: 'box-shadow: none;'
+            },
+            color: colors,
+            series: [
+                {
+                    type: 'graph',
+                    layout: 'force',
+                    data: nodesData.map(node => ({
+                        ...node,
+                        itemStyle: {
+                            color: colors[node.category % colors.length],
+                            shadowBlur: 20,
+                            shadowColor: colors[node.category % colors.length],
+                            borderColor: '#fff',
+                            borderWidth: 1.5
+                        }
+                    })),
+                    links: linksData,
+                    roam: true,
+                    draggable: true,
+                    label: {
+                        show: true,
+                        position: 'right',
+                        formatter: '{b}',
+                        fontSize: 14,
+                        color: '#e0f7fa',
+                        textShadowBlur: 6,
+                        textShadowColor: '#000'
+                    },
+                    edgeLabel: {
+                        show: true,
+                        formatter: function(params) { return params.data.value || ''; },
+                        fontSize: 12,
+                        color: function(params) {
+                            return params.data.lineStyle && params.data.lineStyle.color === '#ff4d4f' ? '#ff4d4f' : '#00e1fd';
+                        },
+                        fontWeight: 'bold',
+                        textShadowBlur: 3,
+                        textShadowColor: '#000',
+                        backgroundColor: 'rgba(0,0,0,0.5)',
+                        padding: [2, 4],
+                        borderRadius: 3
+                    },
+                    lineStyle: {
+                        color: '#00e1fd',
+                        curveness: 0.15,
+                        width: 1.5,
+                        opacity: 0.5,
+                        shadowBlur: 5,
+                        shadowColor: '#00f2fe'
+                    },
+                    emphasis: {
+                        focus: 'adjacency',
+                        lineStyle: { width: 4, opacity: 1, shadowBlur: 15 },
+                        label: { fontSize: 16, fontWeight: 'bold' }
+                    },
+                    force: {
+                        repulsion: 2200, // 为容纳新增节点，进一步增大力场斥力避免拥挤
+                        edgeLength: [120, 300],
+                        gravity: 0.08
+                    }
+                }
+            ]
+        };
+
+        myChart.setOption(option);
+        window.addEventListener('resize', function() { myChart.resize(); });
+    </script>
+</body>
+</html>

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大学物理 - 机械振动与机械波科技图谱</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        /* 科技感深黑背景 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #0a192f 0%, #000000 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #main { width: 100%; height: 100%; }
+
+        /* HUD 提示面板 */
+        #hud-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(4, 21, 40, 0.7);
+            border-left: 4px solid #00f2fe;
+            border-top: 1px solid rgba(0, 242, 254, 0.3);
+            border-bottom: 1px solid rgba(0, 242, 254, 0.3);
+            border-right: 1px solid rgba(0, 242, 254, 0.3);
+            padding: 15px 25px;
+            border-radius: 4px;
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.15);
+            pointer-events: none;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            color: #e0f7fa;
+        }
+        #hud-panel h2 { margin: 0 0 8px 0; font-size: 18px; color: #00f2fe; text-shadow: 0 0 8px #00f2fe; }
+        #hud-panel p { margin: 4px 0; font-size: 13px; color: #88c0d0; }
+
+        /* Tooltip 悬浮框样式 */
+        .tech-tooltip {
+            background: rgba(5, 15, 25, 0.95) !important;
+            border: 1px solid #00f2fe !important;
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.3) !important;
+            border-radius: 6px !important;
+            padding: 15px !important;
+            max-width: 380px;
+            white-space: normal !important; 
+            word-wrap: break-word;
+            word-break: break-all;
+            backdrop-filter: blur(10px);
+        }
+        .tech-tooltip .node-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #00f2fe;
+            margin-bottom: 10px;
+            text-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
+            border-bottom: 1px solid rgba(0, 242, 254, 0.3);
+            padding-bottom: 6px;
+        }
+        .tech-tooltip .node-desc {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #b0c4de;
+            margin: 0 0 12px 0;
+            padding: 0;
+            text-align: left;
+        }
+
+        /* 公式渲染外框 */
+        .formula-box {
+            background: rgba(0, 242, 254, 0.05);
+            border-radius: 4px;
+            padding: 12px 10px;
+            border-left: 3px solid #00f2fe;
+            display: flex;
+            flex-direction: column; 
+            gap: 12px;
+        }
+        .formula-row {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 18px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            letter-spacing: 1px;
+            width: 100%;
+            min-height: 24px;
+        }
+
+        /* --- 物理符号排版系统 --- */
+        .vec {
+            display: inline-block;
+            position: relative;
+            font-style: italic;
+            font-weight: bold;
+            margin: 0 3px;
+            line-height: 1;
+        }
+        .vec::after {
+            content: '→';
+            position: absolute;
+            top: -0.65em;
+            left: 50%;
+            transform: translateX(-50%) scale(0.65);
+            font-weight: normal;
+            font-style: normal;
+        }
+        .math-frac {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            vertical-align: middle;
+            margin: 0 6px;
+            font-size: 0.9em;
+            line-height: 1;
+        }
+        .frac-top { padding: 0 2px; }
+        .frac-line { width: 100%; height: 1px; background-color: #fff; margin: 3px 0; }
+        .frac-bot { padding: 0 2px; }
+        
+        sub { bottom: -0.25em; font-size: 0.75em; margin-left: 1px; }
+        sup { top: -0.4em; font-size: 0.75em; margin-left: 1px; }
+        .operator { margin: 0 5px; }
+        .symbol { font-family: "Courier New", Courier, monospace; font-size: 1.2em; margin: 0 2px; }
+        .math-italic { font-style: italic; font-family: 'Times New Roman', Times, serif; }
+    </style>
+</head>
+<body>
+
+    <div id="hud-panel">
+        <h2>物理引擎 - 振动与波动</h2>
+        <p>核心模块: 能量传播与时空周期</p>
+        <p>[🖱️] 滚轮：全息缩放图谱</p>
+        <p>[🤚] 拖拽：引力漫游节点</p>
+        <p>[🎯] 悬浮：解析底层公式推导</p>
+    </div>
+    
+    <div id="main"></div>
+
+    <script>
+        var myChart = echarts.init(document.getElementById('main'));
+        
+        // 颜色体系：振动与波动（青绿、深蓝、粉紫、橙黄等灵动色彩）
+        const colors = ['#00e1fd', '#ff0844', '#9b5de5', '#fee440', '#f15bb5', '#00f5d4', '#ff7d00'];
+
+        // --- HTML 公式生成器 ---
+        const vec = (letter) => `<span class="vec">${letter}</span>`; 
+        const frac = (top, bottom) => `<span class="math-frac"><span class="frac-top">${top}</span><span class="frac-line"></span><span class="frac-bot">${bottom}</span></span>`;
+        const op = (char) => `<span class="operator">${char}</span>`;
+        const sym = (char) => `<span class="symbol">${char}</span>`;
+
+        // --- 机械振动与机械波知识库数据 ---
+        const nodesData = [
+            { id: '0', name: '振动与波动', symbolSize: 85, category: 0, 
+              desc: '振动是单个物体状态随时间的周期变化；波动是振动状态在空间介质中的传播。两者是时间与空间的交响曲。' },
+
+            // 1. 简谐振动
+            { id: '1', name: '简谐振动', symbolSize: 65, category: 1, desc: '最基本、最简单的机械振动，复杂振动皆可视为简谐振动的合成。' },
+            { id: '1-1', name: '动力学特征', symbolSize: 45, category: 1, 
+              desc: '物体受到的回复力始终与它偏离平衡位置的位移成正比，且方向相反（指向平衡位置）。',
+              formula: [`F${op('=')}${op('-')}kx`] },
+            { id: '1-2', name: '运动学特征', symbolSize: 45, category: 1, 
+              desc: '加速度与位移成正比，方向相反。二阶常系数线性齐次微分方程。',
+              formula: [`a${op('=')}${frac('d²x', 'dt²')}${op('=')}${op('-')}ω²x`] },
+            { id: '1-3', name: '简谐振动描述', symbolSize: 50, category: 1, 
+              desc: '由三大特征量唯一确定：振幅(A)、角频率(ω)、初相(φ)。',
+              formula: [`x${op('=')}A cos(ωt${op('+')}φ)`] },
+            { id: '1-4', name: '图示法', symbolSize: 45, category: 1, desc: '描述振动的两种直观几何方法：1. 旋转矢量法（将振动视为匀速圆周运动的投影）；2. 振动曲线法（x-t 图像）。' },
+            { id: '1-5', name: '振动能量', symbolSize: 45, category: 1, 
+              desc: '简谐振动系统的动能与势能不断相互转化，但总机械能守恒，与振幅的平方成正比。',
+              formula: [`E${op('=')}E<sub>k</sub>${op('+')}E<sub>p</sub>${op('=')}${frac('1', '2')}kA²`] },
+            { id: '1-6', name: '振动的合成', symbolSize: 50, category: 1, 
+              desc: '多个简谐振动叠加。同向同频合成仍为简谐振动；同向不同频产生“拍”现象；相互垂直合成产生“李萨如图形”。' },
+
+            // 2. 机械波基本特征
+            { id: '2', name: '机械波基础', symbolSize: 60, category: 2, desc: '机械振动在弹性介质中的传播过程。传播的是“振动状态”和“能量”，质点并不随波迁移。' },
+            { id: '2-1', name: '形成条件', symbolSize: 40, category: 2, desc: '必须具备两个条件：1. 波源（产生振动）；2. 弹性介质（传播振动）。' },
+            { id: '2-2', name: '波长 (λ)', symbolSize: 40, category: 2, desc: '同一波线上两个相邻的、相位差为 2π 的质点之间的距离。即波在一个周期内传播的距离。' },
+            { id: '2-3', name: '周期(T)与频率(ν)', symbolSize: 40, category: 2, desc: '介质中质点完成一次全振动所需的时间。由波源决定，与介质无关。' },
+            { id: '2-4', name: '波速 (u)', symbolSize: 45, category: 2, 
+              desc: '波形（振动状态或相位）在介质中传播的速度。取决于介质的弹性模量与密度。',
+              formula: [`u${op('=')}${frac('λ', 'T')}${op('=')}λν`] },
+            { id: '2-5', name: '波线 / 波面 / 波前', symbolSize: 40, category: 2, desc: '波面：相位相同的点构成的面；波前：最前方的波面；波线：代表波的传播方向，各向同性介质中与波面垂直。' },
+
+            // 3. 平面简谐波
+            { id: '3', name: '平面简谐波', symbolSize: 60, category: 3, desc: '波面为平面的简谐波。描述介质中任意质点在任意时刻位移的时空函数。' },
+            { id: '3-1', name: '波函数', symbolSize: 55, category: 3, 
+              desc: '结合时间周期性与空间周期性，引入波数 k = 2π/λ。',
+              formula: [
+                  `y(x,t)${op('=')}A cos[ω(t${op('-')}${frac('x', 'u')})${op('+')}φ]`,
+                  `y(x,t)${op('=')}A cos(ωt${op('-')}kx${op('+')}φ)`
+              ] },
+            { id: '3-2', name: '物理含义', symbolSize: 45, category: 3, 
+              desc: '固定位置 x：该处质点的简谐振动方程 y-t；固定时刻 t：该时刻波的空间波形曲线 y-x。' },
+
+            // 4. 波的能量
+            { id: '4', name: '波动能量', symbolSize: 60, category: 4, desc: '与振动不同，波动介质质点不是孤立系统，机械能不守恒，能量伴随波的传播而传递。' },
+            { id: '4-1', name: '波的能量分布', symbolSize: 40, category: 4, desc: '在体积元中，动能与势能同相变化，同时达到最大，同时变为零。总能量随时间作周期性变化。' },
+            { id: '4-2', name: '能流 (P)', symbolSize: 45, category: 4, 
+              desc: '单位时间内通过介质中某一面积的能量，即波的传播功率。',
+              formula: [`P${op('=')}${frac('ΔE', 'Δt')}`] },
+            { id: '4-3', name: '能流密度矢量', symbolSize: 45, category: 4, 
+              desc: '通过垂直于波传播方向单位面积的能流。方向为波的传播方向。',
+              formula: [`${vec('I')}${op('=')}w u ${vec('n')}`] },
+            { id: '4-4', name: '波的强度', symbolSize: 55, category: 4, 
+              desc: '平均能流密度。正比于振幅的平方与频率的平方。',
+              formula: [`${sym('I')} ${op('=')} ${frac('1', '2')}ρuω²A²`] },
+
+            // 5. 干涉与衍射
+            { id: '5', name: '波的干涉与衍射', symbolSize: 65, category: 5, desc: '波动的特有现象，证明光是波动的重要依据。' },
+            { id: '5-1', name: '惠更斯原理', symbolSize: 45, category: 5, desc: '介质中波阵面上的每一点都可以看作是发射子波的新的波源；这些子波的包络面就是新的波阵面。' },
+            { id: '5-2', name: '波的叠加原理', symbolSize: 45, category: 5, desc: '几列波在介质中相遇时，各自独立保持原有的特性传播；相遇处质点的振动位移是各波引起的位移的矢量和。' },
+            { id: '5-3', name: '波的干涉', symbolSize: 55, category: 5, 
+              desc: '相干波（同频、同振向、相位差恒定）叠加时，空间某些点振动始终加强，某些点始终减弱的现象。',
+              formula: [`Δφ${op('=')}φ<sub>2</sub>${op('-')}φ<sub>1</sub>${op('-')}${frac('2π', 'λ')}(r<sub>2</sub>${op('-')}r<sub>1</sub>)`] },
+            { id: '5-4', name: '驻波', symbolSize: 50, category: 5, 
+              desc: '两列振幅相同的相干波在同一直线上相向传播叠加而成。不传播能量，各质点作分段简谐振动（存在波腹与波节）。' },
+            { id: '5-5', name: '波的衍射', symbolSize: 40, category: 5, desc: '波在传播过程中遇到障碍物时，能绕过障碍物边缘进入其几何阴影区继续传播的现象。' },
+
+            // 6. 多普勒效应
+            { id: '6', name: '多普勒效应', symbolSize: 60, category: 6, desc: '由于波源或观察者相对于介质运动，导致观察者接收到的频率与波源发射频率不一致的现象。' },
+            { id: '6-1', name: '频率计算公式', symbolSize: 55, category: 6, 
+              desc: '约定：观察者向波源运动取+号，波源向观察者运动取-号（即相向运动使接收频率升高）。',
+              formula: [`ν'${op('=')}ν ${frac('u &plusmn; v<sub>O</sub>', 'u &#8723; v<sub>S</sub>')}`] } // &plusmn; 为 ±, &#8723; 为 ∓
+        ];
+
+        // --- 有向连线与逻辑推导关系 ---
+        const linksData = [
+            // 主分类骨架
+            { source: '0', target: '1' }, { source: '0', target: '2' }, { source: '0', target: '3' },
+            { source: '0', target: '4' }, { source: '0', target: '5' }, { source: '0', target: '6' },
+            
+            // 1. 简谐振动展开
+            { source: '1', target: '1-1' }, { source: '1', target: '1-2' }, { source: '1', target: '1-3' },
+            { source: '1', target: '1-4' }, { source: '1', target: '1-5' }, { source: '1', target: '1-6' },
+            { source: '1-1', target: '1-2' }, { source: '1-2', target: '1-3' },
+
+            // 2. 机械波基本特征
+            { source: '2', target: '2-1' }, { source: '2', target: '2-2' }, { source: '2', target: '2-3' },
+            { source: '2', target: '2-4' }, { source: '2', target: '2-5' },
+            
+            // 3. 平面简谐波
+            { source: '3', target: '3-1' }, { source: '3', target: '3-2' },
+
+            // 4. 波的能量
+            { source: '4', target: '4-1' }, { source: '4', target: '4-2' }, { source: '4', target: '4-3' }, { source: '4', target: '4-4' },
+            { source: '4-2', target: '4-3' }, { source: '4-3', target: '4-4' },
+
+            // 5. 干涉与衍射
+            { source: '5', target: '5-1' }, { source: '5', target: '5-2' }, { source: '5', target: '5-3' }, { source: '5', target: '5-4' }, { source: '5', target: '5-5' },
+
+            // 6. 多普勒
+            { source: '6', target: '6-1' },
+
+            // ★★★ 核心跨模块物理逻辑推导线 (红色虚线 + 箭头) ★★★
+            // 振动到波动的演变
+            { source: '1', target: '2-1', value: '提供波源', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            // 波函数推导：振动方程 + 波速时延
+            { source: '1-3', target: '3-1', value: '时间延迟 t-x/u', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            { source: '2-4', target: '3-1', value: '代入波速', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            
+            // 波强与振动幅度的关系
+            { source: '1-3', target: '4-4', value: '强度正比于 A²ω²', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+
+            // 叠加与干涉
+            { source: '5-2', target: '1-6', value: '振动层面分析', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            { source: '5-2', target: '5-3', value: '满足相干条件', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            { source: '5-3', target: '5-4', value: '反向传播特例', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+
+            // 惠更斯原理应用
+            { source: '5-1', target: '5-5', value: '次波叠加成衍射', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+
+            // 波速与波长频率
+            { source: '2-2', target: '2-4', value: '波速计算', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#00e1fd', width: 1.5, type: 'dotted' } },
+            { source: '2-3', target: '2-4', value: '波速计算', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#00e1fd', width: 1.5, type: 'dotted' } }
+        ];
+
+        // --- 图表配置 ---
+        const option = {
+            backgroundColor: 'transparent',
+            tooltip: {
+                show: true,
+                trigger: 'item',
+                enterable: true,
+                formatter: function (params) {
+                    if (params.dataType === 'node') {
+                        let data = params.data;
+                        let html = `<div class="tech-tooltip">
+                                        <div class="node-title">${data.name}</div>
+                                        <div class="node-desc">${data.desc || ''}</div>`;
+                        
+                        if (data.formula && data.formula.length > 0) {
+                            html += `<div class="formula-box">`;
+                            data.formula.forEach(f => {
+                                html += `<div class="formula-row">${f}</div>`;
+                            });
+                            html += `</div>`;
+                        }
+                        html += `</div>`;
+                        return html;
+                    }
+                    if (params.dataType === 'edge') {
+                        let isCore = params.data.lineStyle && params.data.lineStyle.color === '#ff4d4f';
+                        let color = isCore ? '#ff4d4f' : '#00e1fd';
+                        return `<div class="tech-tooltip"><div class="node-title" style="margin:0;border:none;padding:0;color:${color}">物理逻辑: ${params.data.value || '体系展开'}</div></div>`;
+                    }
+                },
+                backgroundColor: 'transparent',
+                borderWidth: 0,
+                padding: 0,
+                extraCssText: 'box-shadow: none;'
+            },
+            color: colors,
+            series: [
+                {
+                    type: 'graph',
+                    layout: 'force',
+                    data: nodesData.map(node => ({
+                        ...node,
+                        itemStyle: {
+                            color: colors[node.category % colors.length],
+                            shadowBlur: 20,
+                            shadowColor: colors[node.category % colors.length],
+                            borderColor: '#fff',
+                            borderWidth: 1.5
+                        }
+                    })),
+                    links: linksData,
+                    roam: true,
+                    draggable: true,
+                    label: {
+                        show: true,
+                        position: 'right',
+                        formatter: '{b}',
+                        fontSize: 14,
+                        color: '#e0f7fa',
+                        textShadowBlur: 6,
+                        textShadowColor: '#000'
+                    },
+                    edgeLabel: {
+                        show: true,
+                        formatter: function(params) { return params.data.value || ''; },
+                        fontSize: 12,
+                        color: function(params) {
+                            return params.data.lineStyle && params.data.lineStyle.color === '#ff4d4f' ? '#ff4d4f' : '#00e1fd';
+                        },
+                        fontWeight: 'bold',
+                        textShadowBlur: 3,
+                        textShadowColor: '#000',
+                        backgroundColor: 'rgba(0,0,0,0.5)',
+                        padding: [2, 4],
+                        borderRadius: 3
+                    },
+                    lineStyle: {
+                        color: '#00e1fd',
+                        curveness: 0.15,
+                        width: 1.5,
+                        opacity: 0.5,
+                        shadowBlur: 5,
+                        shadowColor: '#00f2fe'
+                    },
+                    emphasis: {
+                        focus: 'adjacency',
+                        lineStyle: { width: 4, opacity: 1, shadowBlur: 15 },
+                        label: { fontSize: 16, fontWeight: 'bold' }
+                    },
+                    force: {
+                        repulsion: 2500, // 节点众多（约38个），增大斥力让星系更舒展
+                        edgeLength: [120, 320],
+                        gravity: 0.08
+                    }
+                }
+            ]
+        };
+
+        myChart.setOption(option);
+        window.addEventListener('resize', function() { myChart.resize(); });
+    </script>
+</body>
+</html>

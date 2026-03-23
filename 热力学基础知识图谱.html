@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大学物理 - 热力学基础科技图谱</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #05162a 0%, #000000 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #main { width: 100%; height: 100%; }
+
+        #hud-panel {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(4, 21, 40, 0.7);
+            border-left: 4px solid #ff9f43;
+            padding: 15px 25px; border-radius: 4px;
+            z-index: 10; backdrop-filter: blur(5px); color: #e0f7fa;
+            border: 1px solid rgba(255, 159, 67, 0.2);
+        }
+        #hud-panel h2 { margin: 0 0 8px 0; font-size: 18px; color: #ff9f43; text-shadow: 0 0 8px #ff9f43; }
+        #hud-panel p { margin: 4px 0; font-size: 13px; color: #ffcc80; }
+
+        .tech-tooltip {
+            background: rgba(5, 15, 25, 0.98) !important;
+            border: 1px solid #ff9f43 !important;
+            box-shadow: 0 0 25px rgba(255, 159, 67, 0.3) !important;
+            border-radius: 8px !important;
+            padding: 18px !important;
+            width: 320px;
+            max-width: 420px;
+            backdrop-filter: blur(12px);
+            pointer-events: none;
+        }
+        .node-title {
+            font-size: 19px; font-weight: bold; color: #ff9f43;
+            margin-bottom: 12px; border-bottom: 1px solid rgba(255, 159, 67, 0.3);
+            padding-bottom: 8px;
+            display: block;
+        }
+        .node-desc { 
+            font-size: 14px; line-height: 1.6; color: #b0c4de; 
+            margin-bottom: 15px; display: block;
+            white-space: normal !important; word-wrap: break-word !important;
+            text-align: justify;
+        }
+
+        .formula-box {
+            background: rgba(255, 159, 67, 0.08);
+            border-radius: 6px; padding: 15px;
+            border-left: 3px solid #ff9f43;
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .formula-row {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 19px; color: #ffffff;
+            display: flex; align-items: center; justify-content: flex-start;
+            white-space: nowrap;
+        }
+
+        .math-frac {
+            display: inline-flex; flex-direction: column; align-items: center;
+            vertical-align: middle; margin: 0 6px; line-height: 1;
+        }
+        .frac-top { padding: 0 4px; border-bottom: 1.5px solid #fff; padding-bottom: 2px; }
+        .frac-bot { padding: 2px 4px 0 4px; }
+
+        .math-sqrt { display: inline-flex; align-items: center; margin-left: 2px; }
+        .sqrt-tick { font-size: 1.2em; transform: translateY(1px) scaleX(0.9); margin-right: -1px; }
+        .sqrt-content { border-top: 1.5px solid #fff; padding-top: 3px; display: inline-flex; align-items: center; }
+
+        .op { margin: 0 6px; color: #ff9f43; font-weight: bold; }
+        .it { font-style: italic; }
+        sub { font-size: 0.65em; vertical-align: sub; }
+        sup { font-size: 0.65em; vertical-align: super; }
+    </style>
+</head>
+<body>
+
+    <div id="hud-panel">
+        <h2>物理引擎 - 热力学基础</h2>
+        <p>核心：能量转换、循环与方向性</p>
+        <p>[🖱️] 滚轮：缩放图谱 | [🎯] 悬浮：公式解析</p>
+    </div>
+    
+    <div id="main"></div>
+
+    <script>
+        var myChart = echarts.init(document.getElementById('main'));
+        
+        const colors = ['#ff9f43', '#00e1fd', '#ff2e63', '#08ffc8', '#ffee00', '#b100ff', '#21e6c1'];
+
+        const frac = (t, b) => `<span class="math-frac"><span class="frac-top">${t}</span><span class="frac-bot">${b}</span></span>`;
+        const op = (s) => `<span class="op">${s}</span>`;
+        const it = (t) => `<span class="it">${t}</span>`;
+
+        const nodesData = [
+            { id: '0', name: '热力学基础', symbolSize: 90, category: 0, 
+              desc: '研究热运动的宏观理论，通过能量守恒与转换研究物质的热性质及其规律。' },
+
+            { id: '1', name: '能量按自由度均分', symbolSize: 65, category: 1, 
+              desc: '平衡态下，分子每一个自由度都具有相同的平均平动动能。',
+              formula: [`${it('ε')}<sub>k</sub> ${op('=')} ${frac('1', '2')}${it('kT')}`] },
+
+            { id: '2', name: '理想气体内能', symbolSize: 65, category: 2, 
+              desc: '所有分子的热运动动能的总和。理想气体内能仅是温度的单值函数。',
+              formula: [`${it('E')}<sub>内</sub> ${op('=')} ${frac(it('i'), '2')}${frac(it('M'), it('μ'))}${it('RT')}`] },
+
+            { id: '3', name: '热力学第一定律', symbolSize: 75, category: 3, 
+              desc: '能量守恒与转换定律在热力学过程中的表现。',
+              formula: [`${it('Q')}<sup> </sup> ${op('=')} ${it('ΔE')} ${op('+')} ${it('W')}`] },
+
+            { id: '3-1', name: '等温过程', symbolSize: 50, category: 3, 
+              desc: '温度保持不变的过程，内能增量为零。',
+              formula: [`${it('W')} ${op('=')} ${it('Q')} ${op('=')} ${frac(it('M'), it('μ'))}${it('RT ln')}${frac(it('V<sub>2</sub>'), it('V<sub>1</sub>'))}`] },
+            
+            { id: '3-2', name: '等容过程', symbolSize: 50, category: 3, 
+              desc: '体积保持不变的过程，对外不做功。',
+              formula: [`${it('Q')}<sub>V</sub> ${op('=')} ${it('ΔE')} ${op('=')} ${frac(it('i'), '2')}${frac(it('M'), it('μ'))}${it('RΔT')}`] },
+
+            { id: '3-3', name: '等压过程', symbolSize: 50, category: 3, 
+              desc: '压强保持不变的过程，吸收的热量一部分增加内能，一部分做功。',
+              formula: [`${it('Q')}<sub>P</sub> ${op('=')} ${frac(it('i+2'), '2')}${frac(it('M'), it('μ'))}${it('RΔT')}`] },
+
+            { id: '4', name: '循环过程', symbolSize: 65, category: 4, 
+              desc: '系统经过一系列状态变化后又回到初始状态的过程。',
+              formula: [`${it('η')} ${op('=')} ${frac(it('W'), it('Q<sub>吸</sub>'))} ${op('=')} ${it('1')} ${op('-')} ${frac(it('Q<sub>放</sub>'), it('Q<sub>吸</sub>'))}`] },
+
+            { id: '4-1', name: '卡诺循环', symbolSize: 60, category: 4, 
+              desc: '由两个等温过程和两个绝热过程组成的理想循环。',
+              formula: [`${it('η')}<sub>c</sub> ${op('=')} ${it('1')} ${op('-')} ${frac(it('T<sub>2</sub>'), it('T<sub>1</sub>'))}`] },
+
+            { id: '5', name: '热力学第二定律', symbolSize: 70, category: 5, 
+              desc: '揭示热现象过程进行的方向和限度。开尔文表述：热不能全变功；克劳修斯表述：热不能自发从低温传向高温。' },
+
+            { id: '6', name: '熵与熵增加原理', symbolSize: 65, category: 6, 
+              desc: '描述系统无序度的状态函数。在孤立系统中，不可逆过程总是向熵增加的方向进行。',
+              formula: [`${it('ΔS')} ${op('≥')} ${it('∫')}${frac(it('dQ'), it('T'))}`] },
+
+            { id: '7', name: '热力学第零定律', symbolSize: 50, category: 0, 
+              desc: '若两个热力学系统均与第三个系统处于热平衡，则它们彼此也处于热平衡。确立了温度的概念。' }
+        ];
+
+        const linksData = [
+            { source: '0', target: '3' }, { source: '0', target: '5' }, { source: '0', target: '7' },
+            { source: '1', target: '2', value: '微观基础' },
+            { source: '2', target: '3', value: '能量状态' },
+            { source: '3', target: '3-1' }, { source: '3', target: '3-2' }, { source: '3', target: '3-3' },
+            { source: '3', target: '4', value: '定律应用' },
+            { source: '4', target: '4-1' },
+            { source: '4-1', target: '5', value: '推导出' },
+            { source: '5', target: '6', value: '统计解释' },
+            { source: '7', target: '3', value: '温标定义' }
+        ];
+
+        myChart.setOption({
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'item',
+                enterable: true,
+                padding: 0, borderWidth: 0, backgroundColor: 'transparent',
+                formatter: function (params) {
+                    if (params.dataType === 'node') {
+                        let d = params.data;
+                        let html = `<div class="tech-tooltip"><div class="node-title">${d.name}</div><div class="node-desc">${d.desc}</div>`;
+                        if (d.formula) {
+                            html += `<div class="formula-box">`;
+                            d.formula.forEach(f => { html += `<div class="formula-row">${f}</div>`; });
+                            html += `</div>`;
+                        }
+                        return html + `</div>`;
+                    }
+                    return '';
+                }
+            },
+            series: [{
+                type: 'graph', layout: 'force',
+                data: nodesData.map(node => ({
+                    ...node, itemStyle: { color: colors[node.category % colors.length], shadowBlur: 20, shadowColor: colors[node.category % colors.length], borderColor: '#fff', borderWidth: 1.5 }
+                })),
+                links: linksData,
+                roam: true, draggable: true,
+                label: { show: true, position: 'right', color: '#ffcc80', fontSize: 14 },
+                edgeLabel: { show: true, formatter: (p) => p.data.value || '', fontSize: 11, color: '#ff9f43' },
+                lineStyle: { color: 'rgba(255, 159, 67, 0.3)', curveness: 0.1, width: 1.5 },
+                emphasis: { focus: 'adjacency', lineStyle: { width: 4 } },
+                force: { repulsion: 2500, edgeLength: [120, 250], gravity: 0.1 }
+            }]
+        });
+
+        window.addEventListener('resize', () => myChart.resize());
+    </script>
+</body>
+</html>

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大学物理 - 刚体动力学科技图谱</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        /* 科技感深黑背景 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #0a192f 0%, #000000 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #main { width: 100%; height: 100%; }
+
+        /* 界面左上角 HUD 提示面板 */
+        #hud-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(4, 21, 40, 0.7);
+            border-left: 4px solid #00f2fe;
+            border-top: 1px solid rgba(0, 242, 254, 0.3);
+            border-bottom: 1px solid rgba(0, 242, 254, 0.3);
+            border-right: 1px solid rgba(0, 242, 254, 0.3);
+            padding: 15px 25px;
+            border-radius: 4px;
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.15);
+            pointer-events: none;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            color: #e0f7fa;
+        }
+        #hud-panel h2 { margin: 0 0 8px 0; font-size: 18px; color: #00f2fe; text-shadow: 0 0 8px #00f2fe; }
+        #hud-panel p { margin: 4px 0; font-size: 13px; color: #88c0d0; }
+
+        /* Tooltip 悬浮框样式 */
+        .tech-tooltip {
+            background: rgba(5, 15, 25, 0.95) !important;
+            border: 1px solid #00f2fe !important;
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.3) !important;
+            border-radius: 6px !important;
+            padding: 15px !important;
+            max-width: 350px;
+            white-space: normal !important; 
+            word-wrap: break-word;
+            word-break: break-all;
+            backdrop-filter: blur(10px);
+        }
+        .tech-tooltip .node-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #00f2fe;
+            margin-bottom: 10px;
+            text-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
+            border-bottom: 1px solid rgba(0, 242, 254, 0.3);
+            padding-bottom: 6px;
+        }
+        .tech-tooltip .node-desc {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #b0c4de;
+            margin: 0 0 12px 0;
+            padding: 0;
+            text-align: left;
+        }
+
+        /* 公式渲染外框 */
+        .formula-box {
+            background: rgba(0, 242, 254, 0.05);
+            border-radius: 4px;
+            padding: 12px 10px;
+            border-left: 3px solid #00f2fe;
+            display: flex;
+            flex-direction: column; 
+            gap: 12px;
+        }
+        .formula-row {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 18px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            letter-spacing: 1px;
+            width: 100%;
+            min-height: 24px;
+        }
+
+        /* --- 物理符号排版系统 --- */
+        .vec {
+            display: inline-block;
+            position: relative;
+            font-style: italic;
+            font-weight: bold;
+            margin: 0 3px;
+            line-height: 1;
+        }
+        .vec::after {
+            content: '→';
+            position: absolute;
+            top: -0.65em;
+            left: 50%;
+            transform: translateX(-50%) scale(0.65);
+            font-weight: normal;
+            font-style: normal;
+        }
+        .math-frac {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            vertical-align: middle;
+            margin: 0 6px;
+            font-size: 0.9em;
+            line-height: 1;
+        }
+        .frac-top { padding: 0 2px; }
+        .frac-line { width: 100%; height: 1px; background-color: #fff; margin: 3px 0; }
+        .frac-bot { padding: 0 2px; }
+        
+        sub { bottom: -0.25em; font-size: 0.75em; margin-left: 1px; }
+        sup { top: -0.4em; font-size: 0.75em; margin-left: 1px; }
+        .operator { margin: 0 5px; }
+        .symbol { font-family: "Courier New", Courier, monospace; font-size: 1.2em; margin: 0 2px; }
+        .math-italic { font-style: italic; font-family: 'Times New Roman', Times, serif; }
+    </style>
+</head>
+<body>
+
+    <div id="hud-panel">
+        <h2>物理引擎 - 刚体动力学</h2>
+        <p>核心模块: 旋转与空间运动</p>
+        <p>[🖱️] 滚轮：全息缩放图谱</p>
+        <p>[🤚] 拖拽：引力漫游节点</p>
+        <p>[🎯] 悬浮：解析底层公式推导</p>
+    </div>
+    
+    <div id="main"></div>
+
+    <script>
+        var myChart = echarts.init(document.getElementById('main'));
+        
+        // 颜色体系（刚体转动特有风格：青、紫、橙、绿为主）
+        const colors = ['#00f2fe', '#9b5de5', '#f15bb5', '#fee440', '#00bbf9', '#00f5d4'];
+
+        // --- HTML 公式生成器 ---
+        const vec = (letter) => `<span class="vec">${letter}</span>`; 
+        const frac = (top, bottom) => `<span class="math-frac"><span class="frac-top">${top}</span><span class="frac-line"></span><span class="frac-bot">${bottom}</span></span>`;
+        const op = (char) => `<span class="operator">${char}</span>`;
+        const sym = (char) => `<span class="symbol">${char}</span>`;
+        const mi = (char) => `<span class="math-italic">${char}</span>`;
+
+        // --- 刚体动力学知识库数据 ---
+        const nodesData = [
+            { id: '0', name: '刚体动力学', symbolSize: 85, category: 0, 
+              desc: '研究在受力情况下，大小和形状都保持绝对不变的理想物体的运动规律。重点在于转动。' },
+
+            // 1. 刚体运动的分析
+            { id: '1', name: '刚体运动分析', symbolSize: 60, category: 1, desc: '描述刚体在空间中的位置与运动类型。' },
+            { id: '1-1', name: '独立变量 (自由度)', symbolSize: 40, category: 1, 
+              desc: '自由刚体在空间中有6个自由度（3个平动坐标+3个转动角）。而定轴转动刚体仅有1个自由度，即角坐标 θ。' },
+            { id: '1-2', name: '刚体运动分类', symbolSize: 45, category: 1, desc: '刚体最基本的两种运动形式为平动和转动，其余复杂运动均为这二者的叠加。' },
+            { id: '1-2-1', name: '平动', symbolSize: 35, category: 1, desc: '运动过程中刚体内任意两点的连线始终保持平行。刚体上所有点的速度和加速度均相同。' },
+            { id: '1-2-2', name: '定轴转动', symbolSize: 35, category: 1, desc: '刚体上所有点都绕一条空间位置固定不动的直线作圆周运动。' },
+            { id: '1-2-3', name: '平面平行运动', symbolSize: 35, category: 1, desc: '如车轮的滚动。可分解为随质心的平动和绕质心轴的定轴转动。' },
+
+            // 2. 转动惯量与方程
+            { id: '2', name: '动力学基本方程', symbolSize: 65, category: 2, desc: '定轴转动的核心定律，将刚体的转动与受到的力矩联系起来。' },
+            { id: '2-1', name: '转动惯量 (J)', symbolSize: 50, category: 2, 
+              desc: '刚体转动惯性大小的量度。其大小不仅与刚体总质量有关，更决定于质量相对转轴的分布。',
+              formula: [`J${op('=')}${sym('∫')} r² dm`] },
+            { id: '2-2', name: '转动惯量的计算', symbolSize: 45, category: 2, desc: '用于计算非标准轴或复杂形状刚体转动惯量的两大定理。' },
+            { id: '2-2-1', name: '平行轴定理', symbolSize: 35, category: 2, 
+              desc: '绕任一轴的转动惯量，等于绕过质心平行轴的转动惯量，加上总质量与两轴间距平方的乘积。',
+              formula: [`J${op('=')}J<sub>C</sub>${op('+')}md²`] },
+            { id: '2-2-2', name: '垂直轴定理', symbolSize: 35, category: 2, 
+              desc: '薄板绕垂直于板面的轴的转动惯量，等于它绕板内两条相互垂直且相交于该轴的转动惯量之和。',
+              formula: [`J<sub>z</sub>${op('=')}J<sub>x</sub>${op('+')}J<sub>y</sub>`] },
+            { id: '2-3', name: '定轴转动定理', symbolSize: 55, category: 2, 
+              desc: '刚体定轴转动的牛顿第二定律：刚体所受的合外力矩等于其转动惯量与角加速度的乘积。',
+              formula: [`M<sub>z</sub>${op('=')}Jα`] },
+
+            // 3. 角动量
+            { id: '3', name: '角动量系统', symbolSize: 60, category: 3, desc: '研究力矩在时间上的累积效应，类比质点动力学中的动量定理。' },
+            { id: '3-1', name: '刚体角动量 (L)', symbolSize: 45, category: 3, 
+              desc: '定轴转动刚体的角动量，等于其转动惯量与角速度的乘积。',
+              formula: [`L<sub>z</sub>${op('=')}Jω`] },
+            { id: '3-2', name: '角动量定理', symbolSize: 55, category: 3, 
+              desc: '刚体所受合外力矩的冲量矩（对时间的积分），等于刚体角动量的增量。',
+              formula: [`${sym('∫')} M<sub>z</sub> dt${op('=')}Jω<sub>2</sub>${op('-')}Jω<sub>1</sub>`] },
+            { id: '3-3', name: '角动量守恒', symbolSize: 55, category: 3, 
+              desc: '当刚体所受合外力矩为零时，其角动量保持不变。如果系统内部形状改变（J改变），转速ω也会随之改变（如花样滑冰收臂）。',
+              formula: [`Jω${op('=')}常量  (当 M<sub>z</sub>${op('=')}0)`] },
+
+            // 4. 功与动能
+            { id: '4', name: '功与动能定理', symbolSize: 60, category: 4, desc: '研究力矩在空间（角位移）上的累积效应。' },
+            { id: '4-1', name: '力矩的功 (W)', symbolSize: 45, category: 4, 
+              desc: '合外力矩对定轴转动刚体所做的功，等于力矩在角位移上的积分。',
+              formula: [`W${op('=')}${sym('∫')} M<sub>z</sub> dθ`] },
+            { id: '4-2', name: '转动动能 (Ek)', symbolSize: 45, category: 4, 
+              desc: '刚体因绕轴转动而具有的能量。',
+              formula: [`E<sub>k</sub>${op('=')}${frac('1', '2')}Jω²`] },
+            { id: '4-3', name: '动能定理', symbolSize: 55, category: 4, 
+              desc: '合外力矩对刚体所做的总功，等于刚体转动动能的增量。',
+              formula: [`W${op('=')}${frac('1', '2')}Jω<sub>2</sub>²${op('-')}${frac('1', '2')}Jω<sub>1</sub>²`] },
+
+            // 5. 机械能守恒
+            { id: '5', name: '机械能守恒', symbolSize: 60, category: 5, desc: '宏观能量相互转化的最终极定律。' },
+            { id: '5-1', name: '刚体重力势能', symbolSize: 45, category: 5, 
+              desc: '刚体所具有的重力势能，等效于将其全部质量集中在质心(C)处时所具有的势能。',
+              formula: [`E<sub>p</sub>${op('=')}mgh<sub>C</sub>`] },
+            { id: '5-2', name: '守恒定律', symbolSize: 55, category: 5, 
+              desc: '当刚体系统中只有保守力（如重力）做功，而非保守力（摩擦力等）不做功时，系统的平动动能、转动动能和势能总和保持不变。',
+              formula: [`${frac('1', '2')}mv<sub>C</sub>²${op('+')}${frac('1', '2')}J<sub>C</sub>ω²${op('+')}E<sub>p</sub>${op('=')}常量`] }
+        ];
+
+        // --- 有向连线与逻辑推导关系 ---
+        const linksData = [
+            // 主分类骨架
+            { source: '0', target: '1' }, { source: '0', target: '2' }, { source: '0', target: '3' },
+            { source: '0', target: '4' }, { source: '0', target: '5' },
+            
+            // 1. 运动分析
+            { source: '1', target: '1-1' }, { source: '1', target: '1-2' },
+            { source: '1-2', target: '1-2-1' }, { source: '1-2', target: '1-2-2' }, { source: '1-2', target: '1-2-3' },
+
+            // 2. 转动惯量与动力学方程
+            { source: '2', target: '2-1' }, { source: '2', target: '2-2' }, { source: '2', target: '2-3' },
+            { source: '2-2', target: '2-2-1' }, { source: '2-2', target: '2-2-2' },
+            { source: '2-1', target: '2-3' }, // 转动惯量决定定轴转动定理的系数
+
+            // 3. 角动量展开
+            { source: '3', target: '3-1' }, { source: '3', target: '3-2' }, { source: '3', target: '3-3' },
+            { source: '3-1', target: '3-2' },
+
+            // 4. 功与动能展开
+            { source: '4', target: '4-1' }, { source: '4', target: '4-2' }, { source: '4', target: '4-3' },
+            { source: '4-1', target: '4-3' }, { source: '4-2', target: '4-3' },
+
+            // 5. 机械能展开
+            { source: '5', target: '5-1' }, { source: '5', target: '5-2' },
+
+            // ★★★ 核心跨模块逻辑推导线 (红色虚线 + 箭头) ★★★
+            // 从动力学方程出发推导三大定理！
+            { source: '2-3', target: '3-2', value: '两边对时间积分', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } }, 
+            { source: '2-3', target: '4-3', value: '两边对角位移积分', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            
+            // 定理推导守恒
+            { source: '3-2', target: '3-3', value: '合外力矩为0', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } },
+            { source: '4-3', target: '5-2', value: '非保守力不做功', symbol: ['none', 'arrow'], symbolSize: [0, 10], lineStyle: { color: '#ff4d4f', width: 2, type: 'dashed' } }
+        ];
+
+        // --- 图表配置 ---
+        const option = {
+            backgroundColor: 'transparent',
+            tooltip: {
+                show: true,
+                trigger: 'item',
+                enterable: true,
+                formatter: function (params) {
+                    if (params.dataType === 'node') {
+                        let data = params.data;
+                        let html = `<div class="tech-tooltip">
+                                        <div class="node-title">${data.name}</div>
+                                        <div class="node-desc">${data.desc || ''}</div>`;
+                        
+                        if (data.formula && data.formula.length > 0) {
+                            html += `<div class="formula-box">`;
+                            data.formula.forEach(f => {
+                                html += `<div class="formula-row">${f}</div>`;
+                            });
+                            html += `</div>`;
+                        }
+                        html += `</div>`;
+                        return html;
+                    }
+                    if (params.dataType === 'edge') {
+                        let isCore = params.data.lineStyle && params.data.lineStyle.color === '#ff4d4f';
+                        let color = isCore ? '#ff4d4f' : '#00f2fe';
+                        return `<div class="tech-tooltip"><div class="node-title" style="margin:0;border:none;padding:0;color:${color}">物理逻辑: ${params.data.value || '体系展开'}</div></div>`;
+                    }
+                },
+                backgroundColor: 'transparent',
+                borderWidth: 0,
+                padding: 0,
+                extraCssText: 'box-shadow: none;'
+            },
+            color: colors,
+            series: [
+                {
+                    type: 'graph',
+                    layout: 'force',
+                    data: nodesData.map(node => ({
+                        ...node,
+                        itemStyle: {
+                            color: colors[node.category % colors.length],
+                            shadowBlur: 20,
+                            shadowColor: colors[node.category % colors.length],
+                            borderColor: '#fff',
+                            borderWidth: 1.5
+                        }
+                    })),
+                    links: linksData,
+                    roam: true,
+                    draggable: true,
+                    label: {
+                        show: true,
+                        position: 'right',
+                        formatter: '{b}',
+                        fontSize: 14,
+                        color: '#e0f7fa',
+                        textShadowBlur: 6,
+                        textShadowColor: '#000'
+                    },
+                    edgeLabel: {
+                        show: true,
+                        formatter: function(params) { return params.data.value || ''; },
+                        fontSize: 12,
+                        color: function(params) {
+                            return params.data.lineStyle && params.data.lineStyle.color === '#ff4d4f' ? '#ff4d4f' : '#00e1fd';
+                        },
+                        fontWeight: 'bold',
+                        textShadowBlur: 3,
+                        textShadowColor: '#000',
+                        backgroundColor: 'rgba(0,0,0,0.5)',
+                        padding: [2, 4],
+                        borderRadius: 3
+                    },
+                    lineStyle: {
+                        color: '#00e1fd',
+                        curveness: 0.15,
+                        width: 1.5,
+                        opacity: 0.5,
+                        shadowBlur: 5,
+                        shadowColor: '#00f2fe'
+                    },
+                    emphasis: {
+                        focus: 'adjacency',
+                        lineStyle: { width: 4, opacity: 1, shadowBlur: 15 },
+                        label: { fontSize: 16, fontWeight: 'bold' }
+                    },
+                    force: {
+                        repulsion: 2200, 
+                        edgeLength: [120, 260],
+                        gravity: 0.08
+                    }
+                }
+            ]
+        };
+
+        myChart.setOption(option);
+        window.addEventListener('resize', function() { myChart.resize(); });
+    </script>
+</body>
+</html>

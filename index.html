@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <title>大学物理教学与自主学习平台</title>
 
-<!-- MathJax -->
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<!-- 引入不算子全球统计云端脚本 -->
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
 
 <style>
 /* 核心布局调整：左侧导图 + 主内容 + 右侧面板 */
@@ -158,6 +158,37 @@ body {
 
 /* ================= 主体通用样式 ================= */
 .logo { position:absolute; top:20px; left:30px; font-size:14px; color:white; line-height:1.6; z-index: 10; text-shadow: 1px 1px 3px rgba(0,0,0,0.5); }
+
+/* 全球真实访问统计栏 (基于不算子接口) */
+.visitor-stats {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    background: rgba(8, 48, 107, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 10px 20px;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 13px;
+    display: flex;
+    gap: 20px;
+    z-index: 10;
+    backdrop-filter: blur(5px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.stat-item span.num {
+    font-weight: bold;
+    color: #00f2fe;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 18px;
+    text-shadow: 0 0 5px rgba(0, 242, 254, 0.6);
+}
+
 .title { font-size:54px; font-weight:700; color:white; text-align:center; letter-spacing:4px; margin:0 0 40px 0; text-shadow: 2px 2px 6px rgba(0,0,0,0.6); }
 .center-container { display:flex; flex-direction:column; justify-content:center; align-items:center; flex:1; width:100%; }
 .main-menu, .sub-menu, .section-menu { display:grid; grid-template-columns:300px 300px; gap:40px 60px; justify-content:center; margin-top:20px; }
@@ -166,24 +197,10 @@ button:hover { background:#08306b; color:white; transform:translateY(-6px); box-
 .back-btn { background:rgba(85,85,85,0.9); color:white; width:180px; height:60px; font-size:20px; margin-top:40px; }
 .page { display:none; flex-direction:column; align-items:center; justify-content:center; flex:1; width:100%; text-align:center; padding-bottom:40px; }
 
-/* 知识框架样式 */
-.knowledge-graph { display:flex; max-width:1000px; width:90%; margin-top:40px; }
-.vertical-title { writing-mode: vertical-rl; text-orientation: mixed; font-size:42px; font-weight:bold; color:white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-right:30px; }
-.bracket-container { position:relative; flex:1; text-align:left; }
-.bracket { border-left:6px solid white; height:100%; position:absolute; left:0; top:0; box-shadow: -2px 0 4px rgba(0,0,0,0.2); }
-.content-box { margin-left:40px; }
-.section { background:rgba(255,255,255,0.95); padding:15px 20px; border-radius:12px; margin-bottom:20px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
-.section h3 { margin-top:0; margin-bottom:0; cursor:pointer; color:#08306b; display: flex; justify-content: space-between; align-items: center;}
-.section h3::after { content: "▼"; font-size: 14px; color: #888; }
-.subcontent { display:none; margin-top:15px; padding-left:15px; font-size:18px; border-top: 1px dashed #ccc; padding-top: 10px;}
-.subcontent ul { margin: 5px 0; padding-left: 20px;}
-.subcontent li { margin-bottom: 8px; }
-
-/* 仿真与视频展示样式 */
-.external-btn { background: #08306b; color: white; width: 340px; height: 90px; font-size: 20px; }
+/* 仿真按钮展示样式 */
+.external-btn { background: #08306b; color: white; width: 360px; height: 90px; font-size: 20px; }
 .external-btn:hover { background: #0a408b; }
-/* 优化按钮组布局：改为flex弹性换行居中排列，适配奇数或偶数个按钮 (4个按钮会完美2x2排列) */
-.btn-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 40px; max-width: 800px; margin-bottom: 20px; }
+.btn-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 30px 50px; max-width: 900px; margin-bottom: 20px; }
 .ppt-frame { width: 100%; height: calc(100vh - 120px); border: none; border-radius: 8px; }
 
 /* ================= 多视频折叠列表样式 ================= */
@@ -194,6 +211,26 @@ button:hover { background:#08306b; color:white; transform:translateY(-6px); box-
 .video-list-item.open .video-title-bar::after { transform: rotate(90deg); }
 .video-player-container { display: none; padding: 15px; background: #fff; border-top: 1px solid #dee2e6; }
 .video-player { width: 100%; border-radius: 6px; background: #000; outline: none; }
+
+/* ================= 全屏原窗口展示引擎 (图谱与仿真) ================= */
+.fullscreen-overlay {
+    display: none; flex-direction: column; position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: #000; z-index: 9999;
+}
+.overlay-header {
+    height: 50px; background: #08306b; display: flex; align-items: center;
+    justify-content: space-between; padding: 0 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+.overlay-title { color: #fff; font-size: 18px; font-weight: bold; letter-spacing: 1px; }
+.overlay-close-btn {
+    background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3);
+    padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; transition: 0.3s;
+    width: auto; height: auto; box-shadow: none;
+}
+.overlay-close-btn:hover { background: #fff; color: #d32f2f; transform: none; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
+.overlay-iframe { flex: 1; width: 100%; border: none; background: #0b1121; }
+
 </style>
 
 <script>
@@ -202,14 +239,13 @@ const mindmapMapping = {
     'home':[],
     'mechanics':['node-part1'],
     'kinematics':['node-part1', 'node-ch1'],
-    'kinTheory':['node-part1', 'node-ch1'],
-    'kinematicsSimulation': ['node-part1', 'node-ch1']
+    'kinematicsSimulation': ['node-part1', 'node-ch1'],
+    'dynamics': ['node-part1', 'node-ch2'],
+    'dynamicsSimulation': ['node-part1', 'node-ch2']
 };
 
 function updateMindmapHighlight(pageId) {
-    // 移除所有高亮
     document.querySelectorAll('.tree-node').forEach(el => el.classList.remove('active'));
-    // 添加当前页面对应的高亮
     const activeNodes = mindmapMapping[pageId];
     if (activeNodes) {
         activeNodes.forEach(nodeId => {
@@ -219,59 +255,62 @@ function updateMindmapHighlight(pageId) {
     }
 }
 
+// 极致优化：移除了 MathJax 阻塞调用，纯 CSS 切换，实现 0 毫秒无缝响应
 function showPage(id) {
     let pages = document.getElementsByClassName("page");
     for (let p of pages) p.style.display = "none";
     let page = document.getElementById(id);
     page.style.display = "flex";
     
-    // 触发左侧导图高亮更新
     updateMindmapHighlight(id);
-    
-    // 延迟 MathJax 渲染
-    setTimeout(() => MathJax.typesetPromise([page]), 50);
-    // 关闭右侧面板
     closeSidebarPanel();
 }
 
 function goHome() { showPage("home"); }
 function goBack(parentId) { showPage(parentId); }
 
-function toggleSubcontent(id) {
-    const el = document.getElementById(id);
-    el.style.display = (el.style.display==="none" || el.style.display==="") ? "block" : "none";
-    MathJax.typesetPromise([el]);
+// ====================== 核心功能：原窗口沉浸式 Iframe 渲染 ======================
+function openInCurrentWindow(title, url) {
+    const overlay = document.getElementById('fullscreenOverlay');
+    const iframe = document.getElementById('overlayIframe');
+    const titleEl = document.getElementById('overlayTitle');
+    
+    titleEl.textContent = title;
+    iframe.src = encodeURI(url); 
+    overlay.style.display = 'flex';
 }
 
-// ---------------- 新窗口仿真调用方法 ----------------
-// 1. 三维轨迹仿真
+function closeOverlay() {
+    const overlay = document.getElementById('fullscreenOverlay');
+    const iframe = document.getElementById('overlayIframe');
+    overlay.style.display = 'none';
+    iframe.src = ''; // 清除内存并停止声音
+}
+
+// 兼容早期的弹出方法
 function open3dTrajectorySimulation() { window.open('3d_kinematics.html', '_blank', 'width=1200,height=800'); }
-// 2. 三维速度/加速度仿真
 function open3dKinematicsSimulation() { window.open('physics_3d_kinematics.html', '_blank', 'width=1200,height=800'); }
-// 3. 相对风速综合推演
 function openWindSpeedSimulation() { window.open('wind_speed_simulation.html', '_blank', 'width=1200,height=800'); }
-// 4. 伽利略坐标变换动态推演
 function openGalileoTransformSimulation() { window.open('relative_movement.html', '_blank', 'width=1200,height=800'); }
 
-// ====================== 右侧面板核心功能 ======================
+// ====================== 右侧面板核心功能 (视频与课件) ======================
 function openSidebarPanel(type) {
     const panel = document.getElementById('sidebarPanel');
     const panelBody = document.getElementById('panelBody');
     const panelTitle = document.getElementById('panelTitle');
     
-    panelBody.innerHTML = ''; // 清空面板
+    panelBody.innerHTML = ''; 
     
+    // 第1章：运动学
     if (type === 'ppt') {
         panelTitle.textContent = '运动学课件';
         const iframe = document.createElement('iframe');
         iframe.className = 'ppt-frame';
-        iframe.src = '第一章 运动学.pdf'; // 请确保当前目录下有此文件
-        iframe.title = '运动学课件';
+        iframe.src = encodeURI('第一章 运动学.pdf');
         panelBody.appendChild(iframe);
     } 
     else if (type === 'video') {
         panelTitle.textContent = '运动学教学视频';
-        
         const videoData =[
             { title: "1.1 质点运动的描述 (基本概念1)", src: "质点的运动1.mp4" },
             { title: "1.1 质点运动的描述 (基本概念2)", src: "质点的运动2.mp4" },
@@ -281,59 +320,76 @@ function openSidebarPanel(type) {
             { title: "1.3 相对运动1", src: "相对运动1.mp4" },
             { title: "1.3 相对运动2", src: "相对运动2.mp4" }
         ];
-
-        // 动态生成折叠视频列表
-        videoData.forEach((itemData, index) => {
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'video-list-item';
-
-            const titleBar = document.createElement('div');
-            titleBar.className = 'video-title-bar';
-            titleBar.textContent = itemData.title;
-
-            const playerContainer = document.createElement('div');
-            playerContainer.className = 'video-player-container';
-
-            const videoEl = document.createElement('video');
-            videoEl.className = 'video-player';
-            videoEl.controls = true;
-            const sourceEl = document.createElement('source');
-            sourceEl.src = itemData.src; // 绑定真实视频路径
-            sourceEl.type = 'video/mp4';
-            videoEl.appendChild(sourceEl);
-            playerContainer.appendChild(videoEl);
-
-            // 点击展开/收起及播放逻辑
-            titleBar.onclick = () => {
-                const isOpen = itemDiv.classList.contains('open');
-                if (isOpen) {
-                    itemDiv.classList.remove('open');
-                    playerContainer.style.display = 'none';
-                    videoEl.pause(); // 收起时自动暂停
-                } else {
-                    itemDiv.classList.add('open');
-                    playerContainer.style.display = 'block';
-                }
-            };
-
-            itemDiv.appendChild(titleBar);
-            itemDiv.appendChild(playerContainer);
-            panelBody.appendChild(itemDiv);
-        });
+        buildVideoList(videoData, panelBody);
+    }
+    // 第2章：质点系动力学
+    else if (type === 'ppt_dyn') {
+        panelTitle.textContent = '质点系动力学课件';
+        const iframe = document.createElement('iframe');
+        iframe.className = 'ppt-frame';
+        iframe.src = encodeURI('第二章 质点系动力学.pdf'); // 请确保对应文件存在
+        panelBody.appendChild(iframe);
+    }
+    else if (type === 'video_dyn') {
+        panelTitle.textContent = '动力学教学视频';
+        const videoData =[
+            { title: "2.1 牛顿运动定律", src: "牛顿定律.mp4" },
+            { title: "2.2 动量与动量守恒", src: "动量定理.mp4" },
+            { title: "2.3 功与动能定理", src: "动能定理.mp4" },
+            { title: "2.4 势能与机械能守恒", src: "机械能守恒.mp4" }
+        ];
+        buildVideoList(videoData, panelBody);
     }
     
     panel.classList.add('open');
 }
 
+// 抽取构建视频列表的通用函数
+function buildVideoList(videoData, panelBody) {
+    videoData.forEach((itemData) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'video-list-item';
+
+        const titleBar = document.createElement('div');
+        titleBar.className = 'video-title-bar';
+        titleBar.textContent = itemData.title;
+
+        const playerContainer = document.createElement('div');
+        playerContainer.className = 'video-player-container';
+
+        const videoEl = document.createElement('video');
+        videoEl.className = 'video-player';
+        videoEl.controls = true;
+        const sourceEl = document.createElement('source');
+        sourceEl.src = encodeURI(itemData.src);
+        sourceEl.type = 'video/mp4';
+        videoEl.appendChild(sourceEl);
+        playerContainer.appendChild(videoEl);
+
+        titleBar.onclick = () => {
+            const isOpen = itemDiv.classList.contains('open');
+            if (isOpen) {
+                itemDiv.classList.remove('open');
+                playerContainer.style.display = 'none';
+                videoEl.pause();
+            } else {
+                itemDiv.classList.add('open');
+                playerContainer.style.display = 'block';
+            }
+        };
+        itemDiv.appendChild(titleBar);
+        itemDiv.appendChild(playerContainer);
+        panelBody.appendChild(itemDiv);
+    });
+}
+
 function closeSidebarPanel() {
     const panel = document.getElementById('sidebarPanel');
     panel.classList.remove('open');
-    // 停止所有正在播放的视频
     const videos = document.querySelectorAll('#panelBody video');
     videos.forEach(v => v.pause());
 }
 
-// 点击面板外部关闭
 document.addEventListener('click', function(e) {
     const panel = document.getElementById('sidebarPanel');
     const isClickInsidePanel = panel.contains(e.target);
@@ -353,23 +409,18 @@ document.addEventListener('click', function(e) {
     <div class="mindmap-header">大学物理知识导图</div>
     <div class="mindmap-content">
         <ul class="tree-ul">
-            <!-- 第一篇 -->
             <li class="tree-node node-part" id="node-part1" onclick="showPage('mechanics')">第一篇 力学</li>
             <ul>
                 <li class="tree-node node-chapter" id="node-ch1" onclick="showPage('kinematics')">第1章 运动学</li>
-                <li class="tree-node node-chapter" onclick="alert('质点动力学模块待完善')">第2章 质点（系）动力学</li>
+                <li class="tree-node node-chapter" id="node-ch2" onclick="showPage('dynamics')">第2章 质点（系）动力学</li>
                 <li class="tree-node node-chapter" onclick="alert('刚体动力学模块待完善')">第3章 刚体动力学</li>
                 <li class="tree-node node-chapter" onclick="alert('机械振动与波模块待完善')">第5章 机械振动和机械波</li>
             </ul>
-
-            <!-- 第二篇 -->
             <li class="tree-node node-part" id="node-part2" onclick="alert('气体动理论和热力学基础模块待完善')">第二篇 气体动理论和热力学基础</li>
             <ul>
                 <li class="tree-node node-chapter" onclick="alert('模块待完善')">第6章 气体动理论基础</li>
                 <li class="tree-node node-chapter" onclick="alert('模块待完善')">第7章 热力学基础</li>
             </ul>
-
-            <!-- 第三篇 -->
             <li class="tree-node node-part" id="node-part3" onclick="alert('电磁学模块待完善')">第三篇 电磁学</li>
             <ul>
                 <li class="tree-node node-chapter" onclick="alert('模块待完善')">第8章 真空中的静电场</li>
@@ -377,8 +428,6 @@ document.addEventListener('click', function(e) {
                 <li class="tree-node node-chapter" onclick="alert('模块待完善')">第10章 恒定电流和恒定磁场</li>
                 <li class="tree-node node-chapter" onclick="alert('模块待完善')">第12章 电磁感应</li>
             </ul>
-
-            <!-- 第四篇 -->
             <li class="tree-node node-part" id="node-part4" onclick="alert('光学模块待完善')">第四篇 光学</li>
             <ul>
                 <li class="tree-node node-chapter" onclick="alert('模块待完善')">第14章 光的干涉</li>
@@ -392,6 +441,18 @@ document.addEventListener('click', function(e) {
 <!-- ================= 主内容区 ================= -->
 <div class="main-content">
     <div class="logo">淮北师范大学<br>Huaibei Normal University</div>
+
+    <!-- 全球真实访问统计栏 (基于不算子接口) -->
+    <div class="visitor-stats">
+        <div class="stat-item">
+            <span>访问次数 (PV)</span>
+            <span class="num" id="busuanzi_value_site_pv"><i style="font-size:12px; font-style:normal;">连接中..</i></span>
+        </div>
+        <div class="stat-item" style="border-left: 1px solid rgba(255,255,255,0.2); padding-left: 20px;">
+            <span>访问人次 (UV)</span>
+            <span class="num" id="busuanzi_value_site_uv"><i style="font-size:12px; font-style:normal;">连接中..</i></span>
+        </div>
+    </div>
 
     <!-- 首页 -->
     <div id="home" class="page">
@@ -412,7 +473,7 @@ document.addEventListener('click', function(e) {
             <div class="title">第一篇 力学</div>
             <div class="sub-menu">
                 <button onclick="showPage('kinematics')">第1章 运动学</button>
-                <button onclick="alert('质点动力学模块待完善')">第2章 质点（系）动力学</button>
+                <button onclick="showPage('dynamics')">第2章 质点（系）动力学</button>
                 <button onclick="alert('刚体动力学模块待完善')">第3章 刚体动力学</button>
                 <button onclick="alert('机械振动与波模块待完善')">第5章 机械振动和机械波</button>
             </div>
@@ -420,12 +481,12 @@ document.addEventListener('click', function(e) {
         </div>
     </div>
 
-    <!-- 运动学模块 -->
+    <!-- 第1章：运动学核心菜单 -->
     <div id="kinematics" class="page">
         <div class="center-container">
             <div class="title">第1章 运动学</div>
             <div class="section-menu">
-                <button onclick="showPage('kinTheory')">理论知识框架</button>
+                <button onclick="openInCurrentWindow('运动学理论知识框架', '运动学知识图谱.html')">理论知识框架</button>
                 <button onclick="openSidebarPanel('ppt')">教学课件</button>
                 <button onclick="showPage('kinematicsSimulation')">仿真交互模型</button>
                 <button onclick="openSidebarPanel('video')">教学视频</button>
@@ -434,88 +495,79 @@ document.addEventListener('click', function(e) {
         </div>
     </div>
 
-    <!-- 运动学理论知识框架 -->
-    <div id="kinTheory" class="page">
-        <div class="center-container">
-            <div class="title">运动学理论知识框架</div>
-            <div class="knowledge-graph">
-                <div class="vertical-title">运动学</div>
-                <div class="bracket-container">
-                    <div class="bracket"></div>
-                    <div class="content-box">
-                        <div class="section">
-                            <h3 onclick="toggleSubcontent('sub1')">1. 质点运动的描述</h3>
-                            <div class="subcontent" id="sub1">
-                                <ul>
-                                    <li>位置矢量：\( \vec{r}(t) \)</li>
-                                    <li>速度矢量：\( \vec{v} = \frac{d\vec{r}}{dt} \)</li>
-                                    <li>加速度矢量：\( \vec{a} = \frac{d\vec{v}}{dt} \)</li>
-                                </ul>
-                            </div>
-                        </div>
-                        <div class="section">
-                            <h3 onclick="toggleSubcontent('sub2')">2. 直线 / 圆周 / 曲线运动</h3>
-                            <div class="subcontent" id="sub2">
-                                <b>直线运动</b>
-                                <ul>
-                                    <li>匀速：\( v = v_0 \)</li>
-                                    <li>匀加速：\( v = v_0 + a t, \quad s = v_0 t + \frac{1}{2} a t^2 \)</li>
-                                </ul>
-                                <b>圆周运动</b>
-                                <ul>
-                                    <li>角速度：\( \omega = \frac{d\theta}{dt} \)</li>
-                                    <li>向心加速度：\( a_c = \frac{v^2}{r} \)</li>
-                                </ul>
-                                <b>一般曲线运动</b>
-                                <ul>
-                                    <li>切向加速度：\( a_t \)</li>
-                                    <li>法向加速度：\( a_n \)</li>
-                                    <li>总加速度：\( a = \sqrt{a_t^2 + a_n^2} \)</li>
-                                </ul>
-                            </div>
-                        </div>
-                        <div class="section">
-                            <h3 onclick="toggleSubcontent('sub3')">3. 相对运动</h3>
-                            <div class="subcontent" id="sub3">
-                                <ul>
-                                    <li>绝对速度 = 相对速度 + 牵连速度</li>
-                                    <li>速度变换公式：\( \vec{v}_{绝对} = \vec{v}_{相对} + \vec{v}_{牵连} \)</li>
-                                    <li>伽利略坐标变换</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <!-- 第1章：运动学仿真交互模型 -->
+    <div id="kinematicsSimulation" class="page">
+        <div class="center-container" style="justify-content: flex-start; margin-top: 80px;">
+            <div class="title" style="margin-bottom: 30px;">运动学物理引擎推演库</div>
+            <div class="btn-group">
+                <button class="external-btn" onclick="open3dTrajectorySimulation()">
+                    三维曲线运动仿真<br><span style="font-size: 14px; font-weight: normal;">(位矢 / 位移 / 路程)</span>
+                </button>
+                <button class="external-btn" onclick="open3dKinematicsSimulation()">
+                    三维曲线运动仿真<br><span style="font-size: 14px; font-weight: normal;">(速度 / 速率 / 加速度)</span>
+                </button>
+                <button class="external-btn" onclick="openWindSpeedSimulation()">
+                    相对运动仿真<br><span style="font-size: 14px; font-weight: normal;">(风速矢量合成推演)</span>
+                </button>
+                <button class="external-btn" onclick="openGalileoTransformSimulation()">
+                    伽利略坐标变换<br><span style="font-size: 14px; font-weight: normal;">(坐标与位矢动态推演)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('航母舰载机起飞 - 速度矢量合成仿真', '航母舰载机相对运动.html')">
+                    航母舰载机起飞<br><span style="font-size: 14px; font-weight: normal;">(斜角甲板矢量合成)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('国之重器：舰长面临的侧风危机', '遇到侧风危机的舰载机.html')">
+                    航母侧风危机<br><span style="font-size: 14px; font-weight: normal;">(风速补偿偏航角推演)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('转弯时的一滴水 - 空间曲线解析', '拐弯高铁里的水滴.html')">
+                    拐弯高铁里的水滴<br><span style="font-size: 14px; font-weight: normal;">(空间法向加速度探秘)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('Z-Up 空间综合相对运动', '紧急救援.html')">
+                    抗震紧急救援<br><span style="font-size: 14px; font-weight: normal;">(平抛相遇逆向求解)</span>
+                </button>
             </div>
-            <button class="back-btn" onclick="goBack('kinematics')">返回运动学</button>
+            <button class="back-btn" style="margin-top: 20px;" onclick="goBack('kinematics')">返回上一级</button>
         </div>
     </div>
 
-    <!-- 运动学仿真交互模型 -->
-    <div id="kinematicsSimulation" class="page">
+    <!-- 第2章：质点系动力学核心菜单 -->
+    <div id="dynamics" class="page">
         <div class="center-container">
-            <div class="title">运动学仿真交互模型</div>
-            
-            <!-- 现包含 4 个按钮，呈 2x2 完美网格居中排列 -->
-            <div class="btn-group">
-                <button class="external-btn" onclick="open3dTrajectorySimulation()">
-                    三维曲线运动仿真<br><span style="font-size: 16px; font-weight: normal;">(位矢 / 位移 / 路程)</span>
-                </button>
-                <button class="external-btn" onclick="open3dKinematicsSimulation()">
-                    三维曲线运动仿真<br><span style="font-size: 16px; font-weight: normal;">(速度 / 速率 / 加速度)</span>
-                </button>
-                <button class="external-btn" onclick="openWindSpeedSimulation()">
-                    相对运动仿真<br><span style="font-size: 16px; font-weight: normal;">(风速矢量合成推演)</span>
-                </button>
-                <!-- 新增：伽利略坐标变换动态推演 -->
-                <button class="external-btn" onclick="openGalileoTransformSimulation()">
-                    伽利略坐标变换<br><span style="font-size: 16px; font-weight: normal;">(坐标与位矢动态推演)</span>
-                </button>
+            <div class="title">第2章 质点（系）动力学</div>
+            <div class="section-menu">
+                <button onclick="openInCurrentWindow('动力学理论知识框架', '质点(系)动力学知识图谱.html')">理论知识框架</button>
+                <button onclick="openSidebarPanel('ppt_dyn')">教学课件</button>
+                <button onclick="showPage('dynamicsSimulation')">仿真交互模型</button>
+                <button onclick="openSidebarPanel('video_dyn')">教学视频</button>
             </div>
-            
-            <button class="back-btn" onclick="goBack('kinematics')">返回运动学</button>
+            <button class="back-btn" onclick="goBack('mechanics')">返回力学篇</button>
         </div>
     </div>
+
+    <!-- 第2章：动力学仿真交互模型 -->
+    <div id="dynamicsSimulation" class="page">
+        <div class="center-container" style="justify-content: flex-start; margin-top: 80px;">
+            <div class="title" style="margin-bottom: 30px;">动力学物理引擎推演库</div>
+            <div class="btn-group">
+                <button class="external-btn" onclick="openInCurrentWindow('重力与万有引力之间的关系', '重力与万有引力之间的关系.html')">
+                    重力与万有引力关系<br><span style="font-size: 14px; font-weight: normal;">(立体矢量合成模型)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('电梯非惯性系动力学', '连体结构受力分析.html')">
+                    连体结构受力分析<br><span style="font-size: 14px; font-weight: normal;">(电梯非惯性系模型)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('升降机螺帽相对运动', '升降机.html')">
+                    升降机相对运动<br><span style="font-size: 14px; font-weight: normal;">(精细化运动学分析)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('带冲量的滑轮连接体', '定滑轮动量转换.html')">
+                    定滑轮动量转换<br><span style="font-size: 14px; font-weight: normal;">(冲量与动量守恒)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('炮车反冲模型与动量守恒', '炮弹炮车动量分析.html')">
+                    炮弹炮车动量分析<br><span style="font-size: 14px; font-weight: normal;">(相对速度系统模型)</span>
+                </button>
+            </div>
+            <button class="back-btn" style="margin-top: 20px;" onclick="goBack('dynamics')">返回上一级</button>
+        </div>
+    </div>
+
 </div>
 
 <!-- ================= 右侧弹出面板 (课件与视频) ================= -->
@@ -525,8 +577,17 @@ document.addEventListener('click', function(e) {
         <button class="close-panel" title="关闭面板" onclick="closeSidebarPanel()">×</button>
     </div>
     <div id="panelBody" class="panel-body">
-        <!-- 内容由JS动态生成（视频列表/PDF课件） -->
+        <!-- 内容由JS动态生成 -->
     </div>
+</div>
+
+<!-- ================= 全屏遮罩 Iframe 展示层 (知识图谱与新仿真) ================= -->
+<div id="fullscreenOverlay" class="fullscreen-overlay">
+    <div class="overlay-header">
+        <div id="overlayTitle" class="overlay-title">正在加载引擎...</div>
+        <button class="overlay-close-btn" onclick="closeOverlay()">退出展示模式</button>
+    </div>
+    <iframe id="overlayIframe" class="overlay-iframe" src=""></iframe>
 </div>
 
 </body>
