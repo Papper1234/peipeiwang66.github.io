@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 碰撞物理实验室：弹性与非弹性</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050510; color: #fff; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        /* 赛博朋克风格 UI */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+        .panel { background: rgba(10, 15, 30, 0.85); border: 1px solid #334155; border-radius: 8px; padding: 20px; pointer-events: auto; box-shadow: 0 0 20px rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
+        
+        /* 左侧控制台 */
+        #controls { width: 350px; display: flex; flex-direction: column; gap: 15px; }
+        h1 { margin: 0 0 10px 0; font-size: 20px; color: #3b82f6; border-bottom: 2px solid #1e293b; padding-bottom: 10px; }
+        label { font-size: 14px; color: #cbd5e1; display: flex; justify-content: space-between; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #3b82f6; }
+        
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        button { flex: 1; background: #1e293b; color: #fff; border: 1px solid #475569; padding: 8px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; }
+        button:hover { background: #3b82f6; border-color: #60a5fa; }
+        button.active { background: #3b82f6; box-shadow: 0 0 10px #3b82f6; }
+        button.action { background: #10b981; border-color: #34d399; font-size: 16px; padding: 12px; margin-top: 10px; }
+        button.action:hover { background: #059669; }
+        
+        /* 右侧数据大屏 */
+        #data-dashboard { width: 320px; display: flex; flex-direction: column; gap: 15px; }
+        .data-box { background: rgba(0,0,0,0.5); border-left: 4px solid #fff; padding: 10px 15px; border-radius: 4px; }
+        .data-title { font-size: 12px; color: #94a3b8; margin-bottom: 5px; text-transform: uppercase; font-family: 'Segoe UI', sans-serif;}
+        .data-value { font-family: monospace; font-size: 20px; font-weight: bold; }
+        
+        /* 能量条 */
+        .bar-wrap { width: 100%; height: 12px; background: #1e293b; border-radius: 6px; overflow: hidden; margin-top: 5px; }
+        .bar-fill { height: 100%; transition: width 0.3s, background-color 0.3s; }
+        
+        .c-red { color: #ef4444; border-color: #ef4444 !important; }
+        .c-blue { color: #0ea5e9; border-color: #0ea5e9 !important; }
+        .c-purple { color: #a855f7; border-color: #a855f7 !important; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div id="controls" class="panel">
+            <h1>碰撞参数设定</h1>
+            
+            <label style="color:#ef4444; font-weight:bold;">红球质量 (m₁): <span id="val-m1">1.0 kg</span></label>
+            <input type="range" id="m1" min="0.5" max="5" value="1.0" step="0.1">
+            
+            <label style="color:#0ea5e9; font-weight:bold; margin-top:10px;">蓝球质量 (m₂): <span id="val-m2">1.0 kg</span></label>
+            <input type="range" id="m2" min="0.5" max="5" value="1.0" step="0.1">
+
+            <div style="margin-top: 20px; border-top: 1px solid #1e293b; padding-top: 15px;">
+                <label style="margin-bottom: 10px; font-weight:bold; color:#facc15;">碰撞类型 (恢复系数 e)</label>
+                <div class="btn-group">
+                    <button class="type-btn active" data-e="1">完全弹性 (e=1)</button>
+                    <button class="type-btn" data-e="0.5">非弹性 (e=0.5)</button>
+                    <button class="type-btn" data-e="0">完全非弹性 (e=0)</button>
+                </div>
+            </div>
+
+            <button id="btn-start" class="action">▶ 发射红球 (开始碰撞)</button>
+            <button id="btn-reset" style="background:#475569; margin-top:10px;">↺ 重置场景</button>
+        </div>
+
+        <div id="data-dashboard" class="panel">
+            <h1>实时物理监测</h1>
+            
+            <div class="data-box c-purple">
+                <div class="data-title">系统总动量 (P_total) - 绝对守恒</div>
+                <div class="data-value" id="disp-p">0.00 kg·m/s</div>
+            </div>
+
+            <div class="data-box" style="border-color: #facc15;">
+                <div class="data-title">系统总动能 (Ek) - 注意碰撞损耗</div>
+                <div class="data-value" style="color:#facc15;" id="disp-k">0.00 J</div>
+                <div class="bar-wrap"><div id="bar-k" class="bar-fill" style="background:#facc15; width:0%;"></div></div>
+            </div>
+
+            <div style="margin-top: 10px;">
+                <div class="data-title" style="color:#ef4444;">红球速度 v₁: <span id="disp-v1" style="font-family:monospace; font-size:14px;">0.00 m/s</span></div>
+                <div class="data-title" style="color:#0ea5e9; margin-top:5px;">蓝球速度 v₂: <span id="disp-v2" style="font-family:monospace; font-size:14px;">0.00 m/s</span></div>
+            </div>
+            
+            <div id="status-text" style="margin-top:15px; font-size:14px; color:#10b981; font-weight:bold; text-align:center;">等待发射...</div>
+        </div>
+    </div>
+
+    <script>
+        // ================= 1. Three.js 场景初始化 =================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050510, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 15, 25);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambientLight);
+        
+        const pointLight = new THREE.PointLight(0xffffff, 1, 50);
+        pointLight.position.set(0, 10, 0);
+        scene.add(pointLight);
+
+        const gridHelper = new THREE.GridHelper(50, 50, 0x3b82f6, 0x1e293b);
+        gridHelper.position.y = -1;
+        scene.add(gridHelper);
+
+        // ================= 2. 物理实体与材质 =================
+        const matRed = new THREE.MeshPhysicalMaterial({ 
+            color: 0xff0044, emissive: 0x880022, roughness: 0.2, metalness: 0.8, clearcoat: 1.0 
+        });
+        const matBlue = new THREE.MeshPhysicalMaterial({ 
+            color: 0x00aaff, emissive: 0x004488, roughness: 0.2, metalness: 0.8, clearcoat: 1.0 
+        });
+
+        const sphereGeo = new THREE.SphereGeometry(1, 32, 32);
+        
+        const ball1 = new THREE.Mesh(sphereGeo, matRed);
+        const ball2 = new THREE.Mesh(sphereGeo, matBlue);
+        scene.add(ball1);
+        scene.add(ball2);
+
+        // ================= 3. 物理引擎核心状态 =================
+        let m1 = 1.0;
+        let m2 = 1.0;
+        const initial_v1 = 5.0; 
+        let v1 = 0;
+        let v2 = 0;
+        let e = 1.0; 
+        let isRunning = false;
+        let hasCollided = false;
+        
+        const R = 1; 
+
+        function resetPhysics() {
+            isRunning = false;
+            hasCollided = false;
+            
+            let scale1 = Math.pow(m1, 1/3);
+            let scale2 = Math.pow(m2, 1/3);
+            ball1.scale.set(scale1, scale1, scale1);
+            ball2.scale.set(scale2, scale2, scale2);
+            
+            ball1.position.set(-10, scale1 - 1, 0); 
+            ball2.position.set(0, scale2 - 1, 0);
+            
+            v1 = 0;
+            v2 = 0;
+            
+            updateDashboard(0, 0);
+            document.getElementById('status-text').innerText = "等待发射...";
+            document.getElementById('status-text').style.color = "#10b981";
+            document.getElementById('btn-start').disabled = false;
+            document.getElementById('btn-start').style.opacity = 1;
+        }
+
+        function resolveCollision() {
+            let k_before = 0.5 * m1 * v1*v1 + 0.5 * m2 * v2*v2;
+
+            let v1_new = (m1 * v1 + m2 * v2 + m2 * e * (v2 - v1)) / (m1 + m2);
+            let v2_new = (m1 * v1 + m2 * v2 + m1 * e * (v1 - v2)) / (m1 + m2);
+
+            v1 = v1_new;
+            v2 = v2_new;
+            
+            ball1.material.emissiveIntensity = 2;
+            ball2.material.emissiveIntensity = 2;
+            setTimeout(() => {
+                ball1.material.emissiveIntensity = 1;
+                ball2.material.emissiveIntensity = 1;
+            }, 200);
+
+            let k_after = 0.5 * m1 * v1*v1 + 0.5 * m2 * v2*v2;
+            let loss = k_before - k_after;
+            
+            let statusEl = document.getElementById('status-text');
+            if (e === 1) {
+                statusEl.innerText = "碰撞完成！动能无损耗。";
+                statusEl.style.color = "#10b981"; 
+            } else if (e === 0) {
+                statusEl.innerText = `死撞！损失动能 ${loss.toFixed(1)} J (转为热能)`;
+                statusEl.style.color = "#ef4444"; 
+            } else {
+                statusEl.innerText = `非弹性碰撞，损失动能 ${loss.toFixed(1)} J`;
+                statusEl.style.color = "#facc15"; 
+            }
+        }
+
+        // ================= 4. UI 交互绑定 =================
+        document.getElementById('m1').addEventListener('input', (event) => {
+            m1 = parseFloat(event.target.value);
+            document.getElementById('val-m1').innerText = m1.toFixed(1) + " kg";
+            resetPhysics();
+        });
+
+        document.getElementById('m2').addEventListener('input', (event) => {
+            m2 = parseFloat(event.target.value);
+            document.getElementById('val-m2').innerText = m2.toFixed(1) + " kg";
+            resetPhysics();
+        });
+
+        const typeBtns = document.querySelectorAll('.type-btn');
+        typeBtns.forEach(btn => {
+            btn.addEventListener('click', (event) => {
+                typeBtns.forEach(b => b.classList.remove('active'));
+                event.target.classList.add('active');
+                e = parseFloat(event.target.getAttribute('data-e'));
+                resetPhysics();
+            });
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', resetPhysics);
+
+        document.getElementById('btn-start').addEventListener('click', () => {
+            if (isRunning) return;
+            resetPhysics(); 
+            v1 = initial_v1; 
+            isRunning = true;
+            document.getElementById('status-text').innerText = "红球运动中...";
+            document.getElementById('status-text').style.color = "#3b82f6";
+            document.getElementById('btn-start').disabled = true;
+            document.getElementById('btn-start').style.opacity = 0.5;
+        });
+
+        // ================= 5. 数据面板更新 =================
+        let max_k = 0; 
+
+        function updateDashboard(current_v1, current_v2) {
+            let p = m1 * current_v1 + m2 * current_v2;
+            document.getElementById('disp-p').innerText = p.toFixed(2) + " kg·m/s";
+
+            let k = 0.5 * m1 * current_v1*current_v1 + 0.5 * m2 * current_v2*current_v2;
+            document.getElementById('disp-k').innerText = k.toFixed(2) + " J";
+
+            if (!hasCollided && isRunning) {
+                max_k = k; 
+            }
+            
+            let percent = max_k > 0 ? (k / max_k) * 100 : 0;
+            let bar = document.getElementById('bar-k');
+            bar.style.width = percent + "%";
+            
+            if(percent > 99) bar.style.background = "#10b981"; 
+            else if(percent > 50) bar.style.background = "#facc15"; 
+            else bar.style.background = "#ef4444"; 
+
+            document.getElementById('disp-v1').innerText = current_v1.toFixed(2) + " m/s";
+            document.getElementById('disp-v2').innerText = current_v2.toFixed(2) + " m/s";
+        }
+
+        // ================= 6. 动画与渲染主循环 =================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            let dt = clock.getDelta();
+
+            if(dt > 0.1) dt = 0.1; 
+
+            if (isRunning) {
+                ball1.position.x += v1 * dt;
+                ball2.position.x += v2 * dt;
+
+                let r1 = ball1.scale.x; 
+                let r2 = ball2.scale.x;
+                let distance = ball2.position.x - ball1.position.x;
+                
+                if (!hasCollided && distance <= (r1 + r2)) {
+                    ball1.position.x = ball2.position.x - (r1 + r2);
+                    resolveCollision();
+                    hasCollided = true;
+                }
+
+                updateDashboard(v1, v2);
+
+                if(ball1.position.x > 30 || ball2.position.x > 30 || ball1.position.x < -30) {
+                    isRunning = false;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        resetPhysics();
+        animate();
+
+    </script>
+</body>
+</html>

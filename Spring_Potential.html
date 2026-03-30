@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>弹簧弹性势能与作功可视化</title>
+    <style>
+        body { margin: 0; padding: 20px; background-color: #0a0a0a; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; }
+        h2 { margin-top: 0; color: #00ffff; text-shadow: 0 0 10px rgba(0,255,255,0.5); }
+        .controls { background: #1a1a1a; padding: 15px 30px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; display: flex; gap: 20px; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        canvas { background-color: #121212; border: 2px solid #333; border-radius: 8px; box-shadow: 0 0 20px rgba(0, 255, 255, 0.1); }
+        label { font-size: 14px; color: #aaa; }
+        input[type=range] { cursor: pointer; }
+        .legend { margin-top: 15px; display: flex; gap: 20px; font-size: 14px; }
+        .leg-item { display: flex; align-items: center; gap: 5px; }
+        .box { width: 12px; height: 12px; border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+    <h2>弹性势能模型: U(x) = ½kx²</h2>
+    
+    <div class="controls">
+        <label>总机械能 (E): <span id="e-val" style="color:#00ff00; font-weight:bold;">50</span> J</label>
+        <input type="range" id="e-slider" min="5" max="90" value="50" step="1">
+    </div>
+
+    <canvas id="simCanvas" width="800" height="400"></canvas>
+
+    <div class="legend">
+        <div class="leg-item"><div class="box" style="background:#00ffff;"></div> 势能曲线 U(x)</div>
+        <div class="leg-item"><div class="box" style="background:#00ff00;"></div> 总能量线 E</div>
+        <div class="leg-item"><div class="box" style="background:rgba(255,0,255,0.4);"></div> 动能 K (阴影)</div>
+        <div class="leg-item"><div class="box" style="background:#ff3333;"></div> 受力方向与大小 (F = -dU/dx)</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const eSlider = document.getElementById('e-slider');
+        const eVal = document.getElementById('e-val');
+
+        // 物理参数
+        let E = parseFloat(eSlider.value);
+        const k = 2; // 弹簧劲度系数
+        let time = 0;
+
+        // 坐标映射
+        const cx = canvas.width / 2;
+        const cy = canvas.height - 50;
+        const scaleX = 40; // x轴缩放
+        const scaleY = 3;  // y轴缩放
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制坐标轴
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy); // X轴
+            ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height); // Y轴
+            ctx.stroke();
+
+            // 绘制 U(x) = 0.5 * k * x^2
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            for(let px = 0; px <= canvas.width; px += 2) {
+                let x = (px - cx) / scaleX;
+                let u = 0.5 * k * x * x;
+                let py = cy - u * scaleY;
+                if (px === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+
+            // 绘制总能量线 E
+            const pyE = cy - E * scaleY;
+            ctx.strokeStyle = '#00ff00';
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(0, pyE);
+            ctx.lineTo(canvas.width, pyE);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#00ff00';
+            ctx.fillText("总能量 E", 10, pyE - 10);
+
+            // 计算粒子运动 (简谐振动)
+            const amplitude = Math.sqrt((2 * E) / k);
+            const omega = Math.sqrt(k / 1); // 假设质量 m=1
+            const x = amplitude * Math.cos(omega * time);
+            
+            const pxPos = cx + x * scaleX;
+            const currentU = 0.5 * k * x * x;
+            const pyU = cy - currentU * scaleY;
+
+            // 绘制动能阴影 (E 到 U(x) 的垂直距离)
+            ctx.fillStyle = 'rgba(255, 0, 255, 0.4)';
+            ctx.fillRect(pxPos - 10, pyE, 20, pyU - pyE);
+
+            // 绘制粒子在曲线上
+            ctx.fillStyle = '#ff00ff';
+            ctx.beginPath();
+            ctx.arc(pxPos, pyU, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#ff00ff';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // 绘制受力矢量箭头 F = -kx
+            const force = -k * x;
+            const arrowLen = force * 2; // 缩放箭头以便观察
+            drawArrow(ctx, pxPos, pyU, pxPos + arrowLen, pyU, '#ff3333');
+
+            // 绘制水平面上的投影粒子
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(pxPos, cy, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 【修改点】：将时间步长从 0.03 改为 0.015，使动画速度减慢一倍
+            time += 0.015; 
+            requestAnimationFrame(draw);
+        }
+
+        function drawArrow(ctx, fromX, fromY, toX, toY, color) {
+            const headlen = 10; 
+            const dx = toX - fromX;
+            const dy = toY - fromY;
+            const angle = Math.atan2(dy, dx);
+            if(Math.abs(dx) < 1) return; // 力太小不画
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.lineTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.stroke();
+        }
+
+        eSlider.addEventListener('input', (e) => {
+            E = parseFloat(e.target.value);
+            eVal.innerText = E;
+        });
+
+        draw();
+    </script>
+</body>
+</html>

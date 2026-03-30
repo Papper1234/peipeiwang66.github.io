@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>引力势阱：束缚态与逃逸态</title>
+    <style>
+        body { margin: 0; padding: 20px; background-color: #050510; color: #fff; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; }
+        h2 { color: #00ffff; text-shadow: 0 0 10px rgba(0,255,255,0.5); margin-bottom: 5px; }
+        p.desc { color: #aaa; margin-bottom: 20px; }
+        .controls { background: #111; padding: 15px 30px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; display: flex; gap: 30px; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.8); width: 700px; box-sizing: border-box;}
+        .btn { background: #ff0055; color: white; border: none; padding: 10px 20px; font-size: 16px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+        .btn:hover { background: #ff3377; box-shadow: 0 0 15px rgba(255,0,85,0.6); }
+        .status { font-size: 20px; font-weight: bold; font-family: monospace; }
+        .status.bound { color: #ffaa00; }
+        .status.escape { color: #00ffaa; }
+        
+        /* 布局容器 */
+        .container { display: flex; gap: 20px; width: 740px; }
+        .left-col { display: flex; flex-direction: column; gap: 15px; width: 500px; }
+        
+        canvas { background-color: #0a0a1a; border: 2px solid #222; border-radius: 8px; box-shadow: 0 0 20px rgba(0, 100, 255, 0.1); }
+        
+        /* 动态信息面板样式 */
+        .info-panel { background: rgba(0, 255, 255, 0.05); border-left: 4px solid #00ffff; padding: 15px; border-radius: 4px; font-size: 14px; line-height: 1.6; min-height: 120px; box-shadow: inset 0 0 10px rgba(0,255,255,0.02); }
+        .info-panel strong { color: #fff; font-size: 15px; }
+        .info-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; font-family: monospace; }
+        .title-bound { color: #ffaa00; text-shadow: 0 0 5px rgba(255,170,0,0.5); }
+        .title-escape { color: #00ffaa; text-shadow: 0 0 5px rgba(0,255,170,0.5); }
+        .highlight { color: #ff00ff; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>重力井：束缚 (E<0) vs 逃逸 (E≥0)</h2>
+    <p class="desc">调整初始总能量，点击发射。观察能量曲线交点与航天器命运的关系。</p>
+    
+    <div class="controls">
+        <label>初始总能量 (E): <span id="e-val" style="color:#00ff00; font-weight:bold; display:inline-block; width:40px;">-40</span></label>
+        <input type="range" id="e-slider" min="-80" max="20" value="-40" step="1" style="width:150px;">
+        <button class="btn" id="launch-btn">🚀 发射火箭</button>
+        <div id="status-display" class="status bound">状态: 束缚态</div>
+    </div>
+
+    <div class="container">
+        <div class="left-col">
+            <canvas id="graphCanvas" width="500" height="400"></canvas>
+            
+            <div id="info-panel" class="info-panel">
+                </div>
+        </div>
+        
+        <canvas id="spaceCanvas" width="200" height="535"></canvas>
+    </div>
+
+    <script>
+        const graphCtx = document.getElementById('graphCanvas').getContext('2d');
+        const spaceCtx = document.getElementById('spaceCanvas').getContext('2d');
+        const eSlider = document.getElementById('e-slider');
+        const eVal = document.getElementById('e-val');
+        const statusDisplay = document.getElementById('status-display');
+        const launchBtn = document.getElementById('launch-btn');
+        const infoPanel = document.getElementById('info-panel');
+
+        // 物理常量与参数
+        const G_M = 2000; 
+        const R_start = 20; 
+        let E = parseFloat(eSlider.value);
+        
+        // 运行状态
+        let isRunning = false;
+        let r = R_start;
+        let v = 0;
+
+        // 视图映射参数
+        const graphW = 500, graphH = 400; // 调整了高度给文字留空间
+        const scaleR = 2.5; 
+        const scaleE = 2.5; 
+        const cy = 100; // 能量0点向上移动适应新高度
+
+        // 定义两套文案
+        const textBound = `
+            <div class="info-title title-bound">【 束缚态：总能量 E < 0 】</div>
+            <div><strong>物理解释：</strong>系统的总机械能为负。物体的初始动能不足以完全“填平”引力势能的“负坑”。在上升过程中，动能持续转化为势能，最终在<span class="highlight">绿线与蓝线的交点处动能耗尽 (K=0)</span>，被星球引力重新拉回（或形成环绕轨道）。</div>
+            <div style="margin-top:8px;"><strong>航天对应：</strong>发射速度 <span style="color:#00ffff">小于第二宇宙速度 (11.2 km/s)</span>。例如人造地球卫星（达到第一宇宙速度 7.9 km/s 但未逃逸），或洲际导弹。</div>
+        `;
+
+        const textEscape = `
+            <div class="info-title title-escape">【 逃逸态：总能量 E ≥ 0 】</div>
+            <div><strong>物理解释：</strong>系统的总机械能大于或等于零。物体拥有充裕的动能，即使飞到引力势能为零的无穷远处，依然有剩余动能（绿线永远在蓝线上方，<span class="highlight">不产生交点</span>）。引力永远无法耗尽它的动能将其拉回。</div>
+            <div style="margin-top:8px;"><strong>航天对应：</strong>发射速度 <span style="color:#00ffff">达到或超过第二宇宙速度 (≥ 11.2 km/s)</span>。航天器彻底挣脱星球引力束缚，成为星际探测器（如“旅行者号”、“天问一号”）。</div>
+        `;
+
+        function updateStatusUI() {
+            E = parseFloat(eSlider.value);
+            eVal.innerText = E;
+            if(E >= 0) {
+                statusDisplay.innerText = "状态: 逃逸态";
+                statusDisplay.className = "status escape";
+                infoPanel.innerHTML = textEscape;
+                infoPanel.style.borderLeftColor = "#00ffaa";
+            } else {
+                statusDisplay.innerText = "状态: 束缚态";
+                statusDisplay.className = "status bound";
+                infoPanel.innerHTML = textBound;
+                infoPanel.style.borderLeftColor = "#ffaa00";
+            }
+            if(!isRunning) drawFrame(); 
+        }
+
+        eSlider.addEventListener('input', updateStatusUI);
+
+        launchBtn.addEventListener('click', () => {
+            E = parseFloat(eSlider.value);
+            r = R_start;
+            let U_initial = -G_M / R_start;
+            let K_initial = E - U_initial;
+            if(K_initial < 0) K_initial = 0; 
+            v = Math.sqrt(K_initial * 2); 
+            
+            if (!isRunning) {
+                isRunning = true;
+                drawFrame(); 
+            } else {
+                isRunning = true;
+            }
+        });
+
+        function physicsUpdate() {
+            if (!isRunning) return;
+            let a = -G_M / (r * r); 
+            v += a * 0.15; 
+            r += v * 0.15;
+
+            if (r <= R_start) {
+                r = R_start;
+                v = 0;
+                isRunning = false; 
+            }
+            if (r > 250) {
+                isRunning = false; 
+                r = R_start;
+            }
+        }
+
+        function drawFrame() {
+            physicsUpdate();
+
+            // ================= 绘制左侧图表 =================
+            graphCtx.clearRect(0, 0, graphW, graphH);
+            
+            // 画 E=0 虚线
+            graphCtx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            graphCtx.lineWidth = 2;
+            graphCtx.setLineDash([8, 8]);
+            graphCtx.beginPath();
+            graphCtx.moveTo(0, cy);
+            graphCtx.lineTo(graphW, cy);
+            graphCtx.stroke();
+            graphCtx.setLineDash([]);
+            graphCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            graphCtx.fillText("E=0 (逃逸临界线)", 10, cy - 10);
+
+            // 画引力势能曲线
+            graphCtx.strokeStyle = '#00ffff';
+            graphCtx.lineWidth = 3;
+            graphCtx.beginPath();
+            for(let pr = R_start; pr <= 250; pr += 2) {
+                let current_r = pr;
+                let u = -G_M / current_r;
+                let py = cy - u * scaleE; 
+                let px = (current_r - R_start) * scaleR + 30; 
+                if(pr === R_start) graphCtx.moveTo(px, py);
+                else graphCtx.lineTo(px, py);
+            }
+            graphCtx.stroke();
+
+            // 画总能量线 E
+            let pyE = cy - E * scaleE;
+            graphCtx.strokeStyle = '#00ff00';
+            graphCtx.lineWidth = 2;
+            graphCtx.beginPath();
+            graphCtx.moveTo(30, pyE);
+            graphCtx.lineTo(graphW, pyE);
+            graphCtx.stroke();
+            graphCtx.fillStyle = '#00ff00';
+            graphCtx.fillText("总能量 E", graphW - 60, pyE - 10);
+
+            // 绘制当前点
+            let currentU = -G_M / r;
+            let pyU = cy - currentU * scaleE;
+            let pxPos = (r - R_start) * scaleR + 30;
+            
+            graphCtx.fillStyle = 'rgba(255, 0, 255, 0.3)';
+            graphCtx.fillRect(pxPos - 5, pyE, 10, pyU - pyE);
+
+            graphCtx.fillStyle = '#ff00ff';
+            graphCtx.beginPath();
+            graphCtx.arc(pxPos, pyU, 6, 0, Math.PI*2);
+            graphCtx.fill();
+
+            // ================= 绘制右侧空间 =================
+            spaceCtx.clearRect(0, 0, 200, 535);
+            
+            // 星球
+            spaceCtx.fillStyle = '#004488';
+            spaceCtx.beginPath();
+            spaceCtx.arc(100, 580, 80, 0, Math.PI*2); 
+            spaceCtx.fill();
+            spaceCtx.strokeStyle = '#00aaff';
+            spaceCtx.lineWidth = 4;
+            spaceCtx.stroke();
+
+            // 火箭
+            let visualHeight = 535 - ((r - R_start) * scaleR) - 60; 
+            spaceCtx.fillStyle = '#ffcc00';
+            spaceCtx.beginPath();
+            spaceCtx.moveTo(100, visualHeight - 20); 
+            spaceCtx.lineTo(110, visualHeight + 10);
+            spaceCtx.lineTo(90, visualHeight + 10);
+            spaceCtx.fill();
+            
+            // 火焰
+            if(isRunning && v > 0) {
+                spaceCtx.fillStyle = '#ff3300';
+                spaceCtx.beginPath();
+                spaceCtx.moveTo(95, visualHeight + 10);
+                spaceCtx.lineTo(105, visualHeight + 10);
+                spaceCtx.lineTo(100, visualHeight + 25 + Math.random()*10);
+                spaceCtx.fill();
+            }
+
+            if(isRunning) {
+                requestAnimationFrame(drawFrame);
+            }
+        }
+
+        // 初始化
+        updateStatusUI();
+    </script>
+</body>
+</html>

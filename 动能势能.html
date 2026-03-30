@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>功与能转化及守恒定律 - 交互式教学模型</title>
+    <style>
+        /* 科技感深色主题 */
+        :root {
+            --bg-color: #0b1121;
+            --panel-bg: rgba(15, 23, 42, 0.85);
+            --ep-color: #3b82f6; /* 势能 - 蓝色 */
+            --ek-color: #ef4444; /* 动能 - 红色 */
+            --et-color: #a855f7; /* 总能 - 紫色 */
+            --work-color: #f59e0b; /* 功 - 橙色 */
+            --text-main: #f8fafc;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color); color: var(--text-main);
+        }
+
+        /* 物理引擎画布 */
+        #physics-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
+        }
+
+        /* 右侧教学推演控制台 */
+        #teaching-panel {
+            position: absolute; top: 20px; right: 20px; width: 400px;
+            background: var(--panel-bg); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px;
+            padding: 24px; z-index: 10; box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            display: flex; flex-direction: column; max-height: 90vh;
+        }
+
+        h1 { font-size: 20px; margin: 0 0 10px 0; color: #fff; letter-spacing: 1px; border-bottom: 2px solid #334155; padding-bottom: 10px;}
+        
+        /* 步骤讲解区 */
+        #explanation-box {
+            flex: 1; overflow-y: auto; margin-bottom: 15px; padding-right: 10px;
+            font-size: 14px; line-height: 1.6; color: #cbd5e1;
+        }
+        .math-block {
+            background: rgba(0,0,0,0.4); border-left: 4px solid var(--work-color);
+            padding: 12px; margin: 10px 0; border-radius: 4px; font-family: 'Times New Roman', Times, serif;
+            font-size: 16px; font-weight: bold; letter-spacing: 1px;
+        }
+        
+        /* 颜色高亮标签 */
+        .c-ep { color: var(--ep-color); font-weight: bold; }
+        .c-ek { color: var(--ek-color); font-weight: bold; }
+        .c-et { color: var(--et-color); font-weight: bold; }
+        .c-w { color: var(--work-color); font-weight: bold; }
+
+        /* 实时能量柱状图 */
+        .energy-dashboard {
+            background: rgba(0,0,0,0.5); border-radius: 8px; padding: 15px; margin-bottom: 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .bar-container { display: flex; align-items: center; margin-bottom: 8px; }
+        .bar-label { width: 70px; font-size: 13px; font-weight: bold; }
+        .bar-track { flex: 1; height: 16px; background: rgba(255,255,255,0.1); border-radius: 8px; overflow: hidden; position: relative;}
+        .bar-fill { height: 100%; transition: width 0.05s linear; } 
+        .bar-value { width: 50px; text-align: right; font-size: 13px; font-family: monospace; }
+        
+        #bar-ep { background: linear-gradient(90deg, #1e3a8a, var(--ep-color)); }
+        #bar-ek { background: linear-gradient(90deg, #7f1d1d, var(--ek-color)); }
+        #bar-et { background: linear-gradient(90deg, #4c1d95, var(--et-color)); }
+
+        /* 底部控制按钮 */
+        .controls { display: flex; gap: 10px; }
+        button {
+            flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold;
+            cursor: pointer; transition: 0.2s; font-size: 14px;
+        }
+        .btn-prev { background: rgba(255,255,255,0.1); color: #fff; }
+        .btn-prev:hover:not(:disabled) { background: rgba(255,255,255,0.2); }
+        .btn-next { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
+        .btn-next:hover:not(:disabled) { box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4); transform: translateY(-2px);}
+        button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        /* 提示文字 */
+        #canvas-hint { position: absolute; bottom: 20px; left: 20px; color: rgba(255,255,255,0.4); font-size: 13px; pointer-events: none;}
+    </style>
+</head>
+<body>
+
+    <canvas id="physics-canvas"></canvas>
+    <div id="canvas-hint">动力学引擎：实时轨道约束加速度积分 | 步骤5可自由拖动小球</div>
+
+    <div id="teaching-panel">
+        <h1>功与能的转化定律</h1>
+        
+        <div class="energy-dashboard">
+            <div class="bar-container">
+                <div class="bar-label c-ep">势能 Ep</div>
+                <div class="bar-track"><div class="bar-fill" id="bar-ep" style="width: 100%;"></div></div>
+                <div class="bar-value" id="val-ep">100 J</div>
+            </div>
+            <div class="bar-container">
+                <div class="bar-label c-ek">动能 Ek</div>
+                <div class="bar-track"><div class="bar-fill" id="bar-ek" style="width: 0%;"></div></div>
+                <div class="bar-value" id="val-ek">0 J</div>
+            </div>
+            <div class="bar-container" style="margin-bottom: 0;">
+                <div class="bar-label c-et">总机械能</div>
+                <div class="bar-track"><div class="bar-fill" id="bar-et" style="width: 100%;"></div></div>
+                <div class="bar-value" id="val-et">100 J</div>
+            </div>
+        </div>
+
+        <div id="explanation-box"></div>
+
+        <div class="controls">
+            <button class="btn-prev" id="btn-prev" disabled>上一步</button>
+            <button class="btn-next" id="btn-next">开始演示 ▶</button>
+        </div>
+    </div>
+
+    <script>
+        // === 1. 教学剧本设计 ===
+        const courseSteps = [
+            {
+                title: "1. 初始状态：重力势能的建立",
+                content: `将质量为 <span class="math">m</span> 的滑块置于光滑轨道高处。<br>此时速度为 0，<span class="c-ek">动能 Ek = 0</span>。<br>滑块相对底部具有高度 <span class="math">h</span>，系统具有了做功的本领，即存在<span class="c-ep">重力势能 Ep</span>。<br>
+                <div class="math-block">Ep = mgh<br>Ek = 0<br>E_total = mgh</div>`
+            },
+            {
+                title: "2. 保守力做功：势能的释放",
+                content: `释放滑块，滑块下滑。<br>在此过程中，支持力与运动方向垂直不做功。<span class="c-w">重力（保守力）做正功</span>。<br>重力做功的特点：<b>只与初末位置有关，与路径无关</b>。<br>
+                <div class="math-block" style="border-left-color: var(--ep-color)">W_G = - ΔEp = Ep1 - Ep2 > 0</div>
+                <span class="c-ep">势能</span>正在减小。它去哪了？`
+            },
+            {
+                title: "3. 动能定理：功与动能的转化",
+                content: `到达谷底！重力势能降至最低（设为0）。<br>根据<b>动能定理</b>：合外力做的总功等于动能的增量。<br>由于只有重力做功，重力做的功全部转化为了滑块的<span class="c-ek">动能</span>，此时速度达到最大！<br>
+                <div class="math-block" style="border-left-color: var(--ek-color)">W_total = W_G = ΔEk = ½mv² - 0</div>`
+            },
+            {
+                title: "4. 机械能守恒定律",
+                content: `滑块冲上对侧轨道。此时<span class="c-w">重力做负功</span>，<span class="c-ek">动能</span>转化为<span class="c-ep">势能</span>。<br>将步骤2和3的公式联立：<br><b>- ΔEp = ΔEk</b>  =>  <b>ΔEk + ΔEp = 0</b><br>
+                <div class="math-block" style="border-left-color: var(--et-color)">Ek1 + Ep1 = Ek2 + Ep2 = 常数</div>
+                只要只有保守力做功，系统的<span class="c-et">总机械能</span>永远守恒！`
+            },
+            {
+                title: "5. 自由演练与观察",
+                content: `现在滑块将在光滑轨道上永不停息地往复运动。<br>请观察上方<b>实时能量图</b>：<br>
+                1. <span class="c-ep">势能</span>与<span class="c-ek">动能</span>此消彼长。<br>
+                2. 紫色的<span class="c-et">总机械能</span>柱始终如一，坚如磐石。<br><br>
+                <span style="color:#facc15;">⚠️ 你可以任意拖动小球改变其初始高度，松手后观察能量巨大的转化！</span>`
+            }
+        ];
+
+        let currentStep = 0;
+        const expBox = document.getElementById('explanation-box');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+
+        function renderStep() {
+            const step = courseSteps[currentStep];
+            expBox.innerHTML = `<h2 style="color: #60a5fa; font-size: 16px; margin-top:0;">${step.title}</h2>${step.content}`;
+            
+            btnPrev.disabled = currentStep === 0;
+            if (currentStep === courseSteps.length - 1) {
+                btnNext.innerText = "重新开始 ↺";
+                btnNext.style.background = "linear-gradient(135deg, #3b82f6, #2563eb)";
+            } else {
+                btnNext.innerText = currentStep === 0 ? "开始演示 ▶" : "下一步 ▶";
+                btnNext.style.background = "linear-gradient(135deg, #10b981, #059669)";
+            }
+            setPhysicsState(currentStep);
+        }
+
+        btnNext.onclick = () => {
+            if (currentStep < courseSteps.length - 1) currentStep++;
+            else currentStep = 0;
+            renderStep();
+        };
+
+        btnPrev.onclick = () => {
+            if (currentStep > 0) { currentStep--; renderStep(); }
+        };
+
+        // === 2. 物理引擎与 Canvas ===
+        const canvas = document.getElementById('physics-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height, originX, originY;
+        
+        // 核心物理常量
+        const g = 9.8; 
+        const m = 1.0; 
+        const track_a = 0.0025; // 轨道曲率 y = a*x^2
+        const maxE = m * g * 300; // 能量条满格参考值 (增加上限防止溢出UI)
+        
+        // 运动学状态
+        let E_total = m * g * 156.25;  
+        let ball_x = -250; 
+        let vx = 0; // 【修复】直接跟踪 x 轴速度，摒弃单纯的能量推算
+        let isAnimating = false;
+        let isDragging = false;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            originX = width / 2 - 100; // 轨道中心略靠左
+            originY = height - 150;    // 轨道底部位置
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 轨道高度方程与切线斜率
+        function getTrackY(x) { return track_a * x * x; }
+        function getSlope(x) { return 2 * track_a * x; }
+
+        // 根据步骤重置物理状态
+        function setPhysicsState(step) {
+            isDragging = false;
+            
+            if (step === 0) {
+                ball_x = -250; vx = 0;
+                E_total = m * g * getTrackY(ball_x); 
+                isAnimating = false;
+            } 
+            else if (step === 1) {
+                ball_x = -250; vx = 0;
+                E_total = m * g * getTrackY(ball_x); 
+                isAnimating = true; // 开始滑向谷底
+            }
+            else if (step === 2) {
+                ball_x = 0; vx = 0; 
+                isAnimating = false; // 停在谷底供讲解
+            }
+            else if (step === 3) {
+                ball_x = 0;
+                // 赋予谷底应有的理论速度，使其冲上右侧
+                vx = Math.sqrt((2 * E_total) / m); 
+                isAnimating = true;
+            }
+            else if (step === 4) {
+                isAnimating = true; // 自由振荡
+            }
+        }
+
+        // 🌟 核心修复：基于轨道投影的精确动力学积分 (Symplectic Euler) 🌟
+        function updatePhysics() {
+            if (isDragging) {
+                E_total = m * g * getTrackY(ball_x);
+                vx = 0;
+                return;
+            }
+
+            if (!isAnimating) return;
+
+            const dt = 0.15; // 时间步长
+
+            // 1. 计算当前位置的严格沿轨加速度 ax
+            let slope = getSlope(ball_x);
+            let slope2 = slope * slope;
+            let y_double_prime = 2 * track_a;
+            
+            // 公式： ax = (-g*y' - y'*y''*vx^2) / (1 + y'^2)
+            let ax = (-g * slope - slope * y_double_prime * vx * vx) / (1 + slope2);
+            
+            // 2. 根据步骤控制运动
+            if (currentStep === 1) { // 步骤2：下滑
+                vx += ax * dt;
+                ball_x += vx * dt;
+                if (ball_x >= 0) { // 到达谷底
+                    ball_x = 0; vx = 0; isAnimating = false;
+                }
+            }
+            else if (currentStep === 3) { // 步骤4：上冲
+                vx += ax * dt;
+                ball_x += vx * dt;
+                if (vx <= 0 && ball_x > 0) { // 速度耗尽，到达最高点
+                    vx = 0;
+                    ball_x = Math.sqrt(E_total / (m * g * track_a)); // 吸附到理论最高点
+                    isAnimating = false;
+                }
+            }
+            else if (currentStep === 4) { // 步骤5：无限振荡
+                vx += ax * dt;
+                ball_x += vx * dt;
+                
+                // 能量钳制：物理引擎长期积分会有微小漂移，这里强制确保最高点不越界
+                let current_Ep = m * g * getTrackY(ball_x);
+                if (current_Ep >= E_total) {
+                    ball_x = ball_x > 0 ? Math.sqrt(E_total/(m*g*track_a)) : -Math.sqrt(E_total/(m*g*track_a));
+                    vx = 0; // 下一帧加速度会自动拉回小球，不会卡死！
+                }
+            }
+        }
+
+        // 动态更新右上角进度条
+        function updateEnergyBars() {
+            let Ep = m * g * getTrackY(ball_x);
+            let Ek = E_total - Ep;
+            if (isDragging || Ek < 0) Ek = 0;
+
+            document.getElementById('bar-ep').style.width = Math.min(100, (Ep / maxE * 100)) + '%';
+            document.getElementById('val-ep').innerText = Math.round(Ep) + ' J';
+
+            document.getElementById('bar-ek').style.width = Math.min(100, (Ek / maxE * 100)) + '%';
+            document.getElementById('val-ek').innerText = Math.round(Ek) + ' J';
+
+            document.getElementById('bar-et').style.width = Math.min(100, (E_total / maxE * 100)) + '%';
+            document.getElementById('val-et').innerText = Math.round(E_total) + ' J';
+        }
+
+        // 绘制矢量箭头
+        function drawVector(x, y, dx, dy, color, label) {
+            if(Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + dx, y + dy);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            let angle = Math.atan2(dy, dx);
+            ctx.beginPath();
+            ctx.moveTo(x + dx, y + dy);
+            ctx.lineTo(x + dx - 12 * Math.cos(angle - Math.PI / 6), y + dy - 12 * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(x + dx - 12 * Math.cos(angle + Math.PI / 6), y + dy - 12 * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            ctx.fillStyle = color;
+            ctx.font = "bold 16px Arial";
+            ctx.fillText(label, x + dx + 10, y + dy + 5);
+        }
+
+        // 主绘制函数
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            
+            // 背景网格
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 1;
+            for(let i=0; i<height; i+=40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(width, i); ctx.stroke(); }
+            for(let i=0; i<width; i+=40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, height); ctx.stroke(); }
+
+            ctx.save();
+            ctx.translate(originX, originY);
+
+            // 1. 绘制轨道
+            ctx.beginPath();
+            for (let x = -380; x <= 380; x += 5) {
+                let y = -getTrackY(x); // Canvas Y向下为正
+                if (x === -380) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.8)';
+            ctx.lineWidth = 6;
+            ctx.stroke();
+            // 轨道发光
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+            ctx.lineWidth = 12;
+            ctx.stroke();
+
+            // 2. 绘制小球
+            let ball_y = -getTrackY(ball_x);
+            let slope = getSlope(ball_x);
+            let alpha = Math.atan(slope);
+
+            let gradient = ctx.createRadialGradient(ball_x, ball_y, 5, ball_x, ball_y, 25);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.4, isDragging ? 'rgba(250, 204, 21, 0.8)' : 'rgba(16, 185, 129, 0.8)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath(); ctx.arc(ball_x, ball_y, 28, 0, Math.PI * 2); ctx.fill();
+
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(ball_x, ball_y, 12, 0, Math.PI * 2); ctx.fill();
+
+            // 3. 动态物理矢量标示
+            // 重力 (步骤 1,2,3 显示)
+            if (currentStep > 0 && currentStep < 4 && !isDragging) {
+                drawVector(ball_x, ball_y, 0, 60, '#f59e0b', 'G');
+            }
+
+            // 速度矢量 (有动能时显示)
+            if (!isDragging) {
+                let display_vx = vx;
+                if (currentStep === 2) display_vx = 1; // 讲解步骤3时强制显示向右的速度箭头
+
+                if (Math.abs(display_vx) > 0.01 || currentStep === 2) {
+                    // 从总能量逆推显示用的绝对速度（保证 UI 箭头的饱满和准确）
+                    let Ek = E_total - m * g * getTrackY(ball_x);
+                    if(Ek < 0) Ek = 0;
+                    let abs_v = Math.sqrt(2 * Ek / m);
+                    
+                    if (abs_v > 1.0) {
+                        let dir = display_vx >= 0 ? 1 : -1;
+                        let vec_x = abs_v * Math.cos(alpha) * dir;
+                        let vec_y = -abs_v * Math.sin(alpha) * dir; // Canvas Y倒置
+                        
+                        drawVector(ball_x, ball_y, vec_x * 2.5, vec_y * 2.5, '#ef4444', 'v');
+                    }
+                }
+            }
+
+            // 4. 辅助线
+            ctx.beginPath();
+            ctx.moveTo(ball_x, 0);
+            ctx.lineTo(ball_x, ball_y);
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.6)';
+            ctx.setLineDash([5, 5]);
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // 零势能面
+            ctx.fillStyle = '#3b82f6';
+            ctx.font = "14px Arial";
+            ctx.fillText("零势能面 (Ep=0)", 20, 20);
+            ctx.beginPath();
+            ctx.moveTo(-450, 0);
+            ctx.lineTo(450, 0);
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)';
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // 主循环
+        function loop() {
+            updatePhysics();
+            updateEnergyBars();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // === 3. 鼠标交互 (物理边界保护) ===
+        canvas.addEventListener('mousedown', (e) => {
+            if (currentStep !== 4) return;
+            let rect = canvas.getBoundingClientRect();
+            let mouseX = e.clientX - rect.left - originX;
+            let mouseY = e.clientY - rect.top - originY;
+            let ball_y = -getTrackY(ball_x);
+            let dist = Math.sqrt(Math.pow(mouseX - ball_x, 2) + Math.pow(mouseY - ball_y, 2));
+            
+            if (dist < 40) {
+                isDragging = true;
+                isAnimating = false;
+                document.body.style.cursor = 'grabbing';
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            let rect = canvas.getBoundingClientRect();
+            let mouseX = e.clientX - rect.left - originX;
+            let mouseY = e.clientY - rect.top - originY;
+            let ball_y = -getTrackY(ball_x);
+            let dist = Math.sqrt(Math.pow(mouseX - ball_x, 2) + Math.pow(mouseY - ball_y, 2));
+
+            if (currentStep === 4 && !isDragging) {
+                if(dist < 40) document.body.style.cursor = 'grab';
+                else document.body.style.cursor = 'default';
+            }
+
+            if (isDragging) {
+                if (mouseX < -360) mouseX = -360;
+                if (mouseX > 360) mouseX = 360;
+                ball_x = mouseX;
+                E_total = m * g * getTrackY(ball_x); // 动态注入新能量
+                vx = 0;
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                document.body.style.cursor = 'default';
+                // 无需手动判断方向，松手后准确的加速度 ax 会自动引导它下落
+                isAnimating = true; 
+            }
+        });
+
+        // 启动
+        renderStep();
+        loop();
+
+    </script>
+</body>
+</html>

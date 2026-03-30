@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>大学物理教学与自主学习平台</title>
 
-<!-- 引入不算子全球统计云端脚本 -->
 <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
 
 <style>
@@ -404,7 +403,6 @@ document.addEventListener('click', function(e) {
 
 <body onload="showPage('home')">
 
-<!-- ================= 左侧思维导图导航 ================= -->
 <div class="left-sidebar">
     <div class="mindmap-header">大学物理知识导图</div>
     <div class="mindmap-content">
@@ -438,11 +436,9 @@ document.addEventListener('click', function(e) {
     </div>
 </div>
 
-<!-- ================= 主内容区 ================= -->
 <div class="main-content">
     <div class="logo">淮北师范大学<br>Huaibei Normal University</div>
 
-    <!-- 全球真实访问统计栏 (基于不算子接口) -->
     <div class="visitor-stats">
         <div class="stat-item">
             <span>访问次数 (PV)</span>
@@ -454,7 +450,6 @@ document.addEventListener('click', function(e) {
         </div>
     </div>
 
-    <!-- 首页 -->
     <div id="home" class="page">
         <div class="center-container">
             <div class="title">大学物理教学与自主学习平台</div>
@@ -467,7 +462,6 @@ document.addEventListener('click', function(e) {
         </div>
     </div>
 
-    <!-- 力学模块 -->
     <div id="mechanics" class="page">
         <div class="center-container">
             <div class="title">第一篇 力学</div>
@@ -481,7 +475,6 @@ document.addEventListener('click', function(e) {
         </div>
     </div>
 
-    <!-- 第1章：运动学核心菜单 -->
     <div id="kinematics" class="page">
         <div class="center-container">
             <div class="title">第1章 运动学</div>
@@ -495,7 +488,6 @@ document.addEventListener('click', function(e) {
         </div>
     </div>
 
-    <!-- 第1章：运动学仿真交互模型 -->
     <div id="kinematicsSimulation" class="page">
         <div class="center-container" style="justify-content: flex-start; margin-top: 80px;">
             <div class="title" style="margin-bottom: 30px;">运动学物理引擎推演库</div>
@@ -529,7 +521,6 @@ document.addEventListener('click', function(e) {
         </div>
     </div>
 
-    <!-- 第2章：质点系动力学核心菜单 -->
     <div id="dynamics" class="page">
         <div class="center-container">
             <div class="title">第2章 质点（系）动力学</div>
@@ -543,11 +534,29 @@ document.addEventListener('click', function(e) {
         </div>
     </div>
 
-    <!-- 第2章：动力学仿真交互模型 -->
     <div id="dynamicsSimulation" class="page">
         <div class="center-container" style="justify-content: flex-start; margin-top: 80px;">
             <div class="title" style="margin-bottom: 30px;">动力学物理引擎推演库</div>
             <div class="btn-group">
+                
+                <button class="external-btn" onclick="openInCurrentWindow('弹簧弹性势能与作功可视化', 'Spring_Potential.html')">
+                    弹性势能与作功<br><span style="font-size: 14px; font-weight: normal;">(弹簧振子势能模型)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('引力势阱：束缚态与逃逸态', 'Gravity_Escape.html')">
+                    引力势阱与逃逸<br><span style="font-size: 14px; font-weight: normal;">(束缚与逃逸能量分析)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('功与能转化及守恒定律', '动能势能.html')">
+                    机械能守恒定律<br><span style="font-size: 14px; font-weight: normal;">(严格动力学积分滑块)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('曲面滑块受力与能量分析', 'Work_Energy_Sim.html')">
+                    曲面变力作功推演<br><span style="font-size: 14px; font-weight: normal;">(动能定理与功能原理)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('变力作功：铁锤击钉的数学建模', 'Hammer_Nail_Sim.html')">
+                    铁锤击钉数学建模<br><span style="font-size: 14px; font-weight: normal;">(F-x图像作功积分)</span>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('3D 碰撞物理实验室：弹性与非弹性', '3D_Collisions.html')">
+                    3D 碰撞物理实验<br><span style="font-size: 14px; font-weight: normal;">(动量守恒与动能耗散)</span>
+                </button>
                 <button class="external-btn" onclick="openInCurrentWindow('重力与万有引力之间的关系', '重力与万有引力之间的关系.html')">
                     重力与万有引力关系<br><span style="font-size: 14px; font-weight: normal;">(立体矢量合成模型)</span>
                 </button>
@@ -570,18 +579,15 @@ document.addEventListener('click', function(e) {
 
 </div>
 
-<!-- ================= 右侧弹出面板 (课件与视频) ================= -->
 <div id="sidebarPanel" class="sidebar-panel">
     <div class="panel-header">
         <h2 id="panelTitle" class="panel-title">面板标题</h2>
         <button class="close-panel" title="关闭面板" onclick="closeSidebarPanel()">×</button>
     </div>
     <div id="panelBody" class="panel-body">
-        <!-- 内容由JS动态生成 -->
-    </div>
+        </div>
 </div>
 
-<!-- ================= 全屏遮罩 Iframe 展示层 (知识图谱与新仿真) ================= -->
 <div id="fullscreenOverlay" class="fullscreen-overlay">
     <div class="overlay-header">
         <div id="overlayTitle" class="overlay-title">正在加载引擎...</div>

@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>变力作功：铁锤击钉仿真模型</title>
+    
+    <script>
+        MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: {
+                fontCache: 'global'
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --bg: #0b1121;
+            --panel: rgba(15, 23, 42, 0.9);
+            --primary: #3b82f6;
+            --text: #f8fafc;
+            --nail: #a5b4fc;
+            --hammer: #f59e0b;
+            --wood: #854d0e;
+            --area1: rgba(59, 130, 246, 0.6); 
+            --area2: rgba(16, 185, 129, 0.6); 
+            --area3: rgba(168, 85, 247, 0.6); 
+        }
+        body { margin: 0; padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; }
+        h1 { font-size: 24px; color: var(--primary); text-shadow: 0 0 10px rgba(59, 130, 246, 0.5); margin-bottom: 20px;}
+        
+        .container { display: flex; gap: 20px; width: 1100px; max-width: 100%; }
+        
+        .left-col { width: 500px; display: flex; flex-direction: column; gap: 15px; }
+        .canvas-container { background: #0f172a; border: 1px solid #334155; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); overflow: hidden; position: relative; }
+        canvas { display: block; }
+        
+        .controls { background: var(--panel); padding: 15px; border-radius: 8px; border: 1px solid #1e293b; display: flex; gap: 10px; justify-content: center; }
+        button { background: var(--primary); color: white; border: none; padding: 12px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; flex: 1; font-size: 15px; }
+        button:hover:not(:disabled) { background: #2563eb; box-shadow: 0 0 15px rgba(59, 130, 246, 0.6); }
+        button:disabled { background: #475569; cursor: not-allowed; opacity: 0.7; }
+        button.reset { background: #ef4444; }
+        button.reset:hover:not(:disabled) { background: #dc2626; box-shadow: 0 0 15px rgba(239, 68, 68, 0.6); }
+
+        .right-col { flex: 1; background: var(--panel); border: 1px solid #1e293b; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+        .header { background: #0f172a; padding: 15px 20px; font-weight: bold; font-size: 18px; border-bottom: 1px solid #334155; color: #60a5fa; }
+        .content { padding: 20px; overflow-y: auto; font-size: 15px; line-height: 1.7; }
+        
+        .math-box { background: rgba(0,0,0,0.3); padding: 15px; border-left: 4px solid var(--primary); border-radius: 4px; margin: 15px 0; font-family: 'Times New Roman', Times, serif; }
+        .highlight-text { color: #fbbf24; font-weight: bold; }
+        
+        .data-panel { display: flex; justify-content: space-between; background: rgba(0,0,0,0.4); padding: 10px 15px; border-radius: 6px; margin-top: 15px; font-family: monospace; font-size: 14px; }
+        .data-item { display: flex; flex-direction: column; align-items: center; }
+        .data-val { font-size: 18px; font-weight: bold; color: #10b981; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <h1>变力作功：铁锤击钉的数学建模</h1>
+
+    <div class="container">
+        <div class="left-col">
+            <div class="canvas-container">
+                <canvas id="simCanvas" width="500" height="250"></canvas>
+            </div>
+            <div class="canvas-container">
+                <canvas id="graphCanvas" width="500" height="250"></canvas>
+            </div>
+            
+            <div class="controls">
+                <button id="btn-strike">挥动铁锤 (打击)</button>
+                <button id="btn-reset" class="reset">拔出铁钉 (重置)</button>
+            </div>
+
+            <div class="data-panel">
+                <div class="data-item"><span>打击次数 (n)</span><span class="data-val" id="val-n" style="color: #fff;">0</span></div>
+                <div class="data-item"><span>总深度 (x)</span><span class="data-val" id="val-x">0.00 cm</span></div>
+                <div class="data-item"><span>本次打入深度 (Δx)</span><span class="data-val" id="val-dx" style="color: #f59e0b;">0.00 cm</span></div>
+                <div class="data-item"><span>每次作功 (W)</span><span class="data-val" id="val-w" style="color: #3b82f6;">恒定</span></div>
+            </div>
+        </div>
+
+        <div class="right-col">
+            <div class="header">物理建模与数学推导</div>
+            <div class="content">
+                <p><b>1. 物理模型建立：</b></p>
+                <p>已知木板对铁钉的阻力 $f$ 与进入深度 $x$ 成正比，即存在比例常数 $k$，使得：
+                <span style="color:#f59e0b; font-weight:bold;">$$ f = kx $$</span></p>
+                <p>设铁锤每次打击铁钉提供的能量为 $W$。由于每次打击的速度相同，铁锤的动能相同，因此每次打击铁锤对铁钉作的功 $W$ 都是<b>恒定相等</b>的。</p>
+                
+                <p><b>2. 第一次打击 (n=1)：</b></p>
+                <p>铁钉从深度 $0$ 进入到 $x_1 = 1\text{ cm}$。根据功的定义，变力作功等于 $f-x$ 曲线下的面积（即微积分积分）：</p>
+                <div class="math-box">
+                    $$ W = \int_{0}^{x_1} f \,dx = \int_{0}^{x_1} kx \,dx = \frac{1}{2}kx_1^2 $$
+                </div>
+                <p>这对应于左下方图像中<span style="color:#60a5fa; font-weight:bold;">蓝色三角形</span>的面积。</p>
+
+                <p><b>3. 第二次打击 (n=2)：</b></p>
+                <p>铁钉从深度 $x_1$ 进一步打入到总深度 $x_2$。铁锤再次作功 $W$：</p>
+                <div class="math-box">
+                    $$ W = \int_{x_1}^{x_2} f \,dx = \int_{x_1}^{x_2} kx \,dx = \frac{1}{2}k(x_2^2 - x_1^2) $$
+                </div>
+                <p>这对应于图像中<span style="color:#34d399; font-weight:bold;">绿色梯形</span>的面积。因为每次作功相同，所以<b>蓝三角面积 = 绿梯形面积</b>。</p>
+
+                <p><b>4. 联立求解：</b></p>
+                <p>将两次作功的等式联立：</p>
+                <div class="math-box">
+                    $$ \frac{1}{2}k(x_2^2 - x_1^2) = \frac{1}{2}kx_1^2 $$
+                    $$ x_2^2 - x_1^2 = x_1^2 \implies x_2^2 = 2x_1^2 $$
+                    $$ x_2 = \sqrt{2}x_1 \approx 1.414\text{ cm} $$
+                </div>
+                <p><b>终极答案：</b><br>
+                题目问的是“击第二次时能击入多深”（即第二次<span class="highlight-text">额外增加的深度 $\Delta x$</span>），而不是总深度：</p>
+                <p style="font-size: 18px; color:#10b981; font-weight:bold; text-align:center;">
+                    $$ \Delta x = x_2 - x_1 = (\sqrt{2} - 1) \approx 0.414\text{ cm} $$
+                </p>
+                <p><i>（直观理解：随着钉子越陷越深，木板阻力越来越大。为了消耗掉同样大小的铁锤动能，在巨大的阻力下，钉子只能前进非常短的一段距离。这就是为什么同样力气的锤子，越往后越难敲进去。）</i></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM 元素
+        const simCanvas = document.getElementById('simCanvas');
+        const simCtx = simCanvas.getContext('2d');
+        const graphCanvas = document.getElementById('graphCanvas');
+        const graphCtx = graphCanvas.getContext('2d');
+        const btnStrike = document.getElementById('btn-strike');
+        const btnReset = document.getElementById('btn-reset');
+        
+        const valN = document.getElementById('val-n');
+        const valX = document.getElementById('val-x');
+        const valDx = document.getElementById('val-dx');
+
+        // 物理常量与状态
+        const x1_cm = 1.0; 
+        let strikeCount = 0;
+        let currentDepth = 0; 
+        let targetDepth = 0;  
+        let previousDepth = 0; 
+        
+        let isAnimating = false;
+        let animationProgress = 0; 
+
+        const areaColors = [
+            'rgba(59, 130, 246, 0.7)', 
+            'rgba(16, 185, 129, 0.7)', 
+            'rgba(168, 85, 247, 0.7)', 
+            'rgba(245, 158, 11, 0.7)', 
+            'rgba(239, 68, 68, 0.7)'   
+        ];
+
+        const cm_to_px_sim = 80; 
+        const nailWidth = 12;
+        const woodTopY = 100;
+        
+        const graphPadX = 50;
+        const graphPadY = 30;
+        const graphW = graphCanvas.width - 2 * graphPadX;
+        const graphH = graphCanvas.height - 2 * graphPadY;
+        const cm_to_px_graph = graphW / 3; 
+
+        function updateAnimation() {
+            if (!isAnimating) return;
+            
+            animationProgress += 0.04; 
+            if (animationProgress >= 1) {
+                animationProgress = 1;
+                isAnimating = false;
+                currentDepth = targetDepth;
+                btnStrike.disabled = false; 
+            } else {
+                let easeOut = 1 - Math.pow(1 - animationProgress, 3);
+                currentDepth = previousDepth + (targetDepth - previousDepth) * easeOut;
+            }
+            
+            drawSim();
+            drawGraph();
+            
+            if (isAnimating) {
+                requestAnimationFrame(updateAnimation);
+            }
+        }
+
+        function drawSim() {
+            simCtx.clearRect(0, 0, simCanvas.width, simCanvas.height);
+            
+            simCtx.fillStyle = '#713f12'; 
+            simCtx.fillRect(0, woodTopY, simCanvas.width, simCanvas.height - woodTopY);
+            simCtx.strokeStyle = '#451a03';
+            simCtx.lineWidth = 2;
+            simCtx.beginPath();
+            simCtx.moveTo(0, woodTopY + 30); simCtx.lineTo(simCanvas.width, woodTopY + 30);
+            simCtx.moveTo(0, woodTopY + 80); simCtx.lineTo(simCanvas.width, woodTopY + 80);
+            simCtx.stroke();
+
+            const centerX = simCanvas.width / 2;
+            const nailLenPx = 3 * cm_to_px_sim; 
+            const depthPx = currentDepth * cm_to_px_sim;
+            
+            const nailTopY = woodTopY - nailLenPx + depthPx;
+            
+            simCtx.fillStyle = '#cbd5e1'; 
+            simCtx.fillRect(centerX - nailWidth/2, nailTopY, nailWidth, nailLenPx);
+            
+            simCtx.beginPath();
+            simCtx.moveTo(centerX - nailWidth/2, nailTopY + nailLenPx);
+            simCtx.lineTo(centerX + nailWidth/2, nailTopY + nailLenPx);
+            simCtx.lineTo(centerX, nailTopY + nailLenPx + 15);
+            simCtx.fill();
+            
+            simCtx.fillStyle = '#94a3b8';
+            simCtx.fillRect(centerX - nailWidth, nailTopY - 8, nailWidth * 2, 8);
+
+            let hammerY = nailTopY - 60; 
+            let hammerRot = 0;
+            
+            if (isAnimating) {
+                if (animationProgress < 0.3) {
+                    hammerY = nailTopY - 60 - (animationProgress/0.3 * 40);
+                    hammerRot = -(animationProgress/0.3) * 0.2; 
+                } else if (animationProgress < 0.5) {
+                    let fallProg = (animationProgress - 0.3) / 0.2;
+                    hammerY = nailTopY - 100 + (fallProg * 100);
+                } else {
+                    hammerY = nailTopY - 8;
+                }
+            } else if (strikeCount > 0) {
+                 hammerY = nailTopY - 8; 
+            }
+
+            simCtx.save();
+            simCtx.translate(centerX + 30, hammerY - 20); 
+            simCtx.rotate(hammerRot);
+            
+            simCtx.fillStyle = '#b45309';
+            simCtx.fillRect(0, -10, 150, 20);
+            simCtx.fillStyle = '#475569';
+            simCtx.fillRect(-40, -25, 60, 50);
+            simCtx.fillStyle = '#64748b';
+            simCtx.fillRect(-50, -20, 10, 40); 
+            
+            simCtx.restore();
+
+            simCtx.strokeStyle = '#fff';
+            simCtx.lineWidth = 1;
+            simCtx.setLineDash([4, 4]);
+            simCtx.beginPath();
+            simCtx.moveTo(centerX + 30, woodTopY);
+            simCtx.lineTo(centerX + 150, woodTopY);
+            simCtx.moveTo(centerX + 30, woodTopY + depthPx);
+            simCtx.lineTo(centerX + 150, woodTopY + depthPx);
+            simCtx.stroke();
+            simCtx.setLineDash([]);
+            
+            simCtx.fillStyle = '#10b981';
+            simCtx.font = "bold 16px Arial";
+            if (currentDepth > 0) {
+                simCtx.fillText("x = " + currentDepth.toFixed(2) + " cm", centerX + 160, woodTopY + depthPx / 2 + 5);
+            }
+        }
+
+        function drawGraph() {
+            graphCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+            
+            const originX = graphPadX;
+            const originY = graphCanvas.height - graphPadY;
+            
+            graphCtx.strokeStyle = '#94a3b8';
+            graphCtx.lineWidth = 2;
+            graphCtx.beginPath();
+            graphCtx.moveTo(originX, graphPadY); graphCtx.lineTo(originX, originY); 
+            graphCtx.moveTo(originX, originY); graphCtx.lineTo(graphCanvas.width - 20, originY); 
+            graphCtx.stroke();
+            
+            graphCtx.fillStyle = '#cbd5e1';
+            graphCtx.font = "14px Arial";
+            graphCtx.fillText("深度 x (cm)", graphCanvas.width - 90, originY + 20);
+            graphCtx.fillText("阻力 f (N)", 10, graphPadY - 10);
+            
+            const k_pixel = graphH / (3 * cm_to_px_graph); 
+            
+            graphCtx.strokeStyle = '#f59e0b';
+            graphCtx.lineWidth = 3;
+            graphCtx.beginPath();
+            graphCtx.moveTo(originX, originY);
+            graphCtx.lineTo(originX + 3 * cm_to_px_graph, originY - 3 * cm_to_px_graph * k_pixel);
+            graphCtx.stroke();
+
+            let pastDepth = 0;
+            for (let i = 1; i <= strikeCount; i++) {
+                let d_n = Math.sqrt(i) * x1_cm; 
+                if (i === strikeCount && isAnimating) {
+                    d_n = currentDepth;
+                }
+                
+                let px_start = originX + pastDepth * cm_to_px_graph;
+                let px_end = originX + d_n * cm_to_px_graph;
+                
+                let py_start = originY - pastDepth * cm_to_px_graph * k_pixel;
+                let py_end = originY - d_n * cm_to_px_graph * k_pixel;
+
+                graphCtx.fillStyle = areaColors[(i-1) % areaColors.length];
+                graphCtx.beginPath();
+                graphCtx.moveTo(px_start, originY);
+                graphCtx.lineTo(px_start, py_start);
+                graphCtx.lineTo(px_end, py_end);
+                graphCtx.lineTo(px_end, originY);
+                graphCtx.closePath();
+                graphCtx.fill();
+                
+                graphCtx.strokeStyle = '#fff';
+                graphCtx.lineWidth = 1;
+                graphCtx.beginPath();
+                graphCtx.moveTo(px_end, originY);
+                graphCtx.lineTo(px_end, py_end);
+                graphCtx.stroke();
+                
+                if (!isAnimating || i < strikeCount) {
+                    let midX = (px_start + px_end) / 2;
+                    let midY = originY - 15;
+                    graphCtx.fillStyle = '#fff';
+                    graphCtx.font = "bold 14px Arial";
+                    graphCtx.fillText("W", midX - 6, midY);
+                }
+
+                pastDepth = d_n;
+            }
+        }
+
+        btnStrike.addEventListener('click', () => {
+            btnStrike.disabled = true;
+            previousDepth = currentDepth;
+            
+            strikeCount++;
+            targetDepth = Math.sqrt(strikeCount) * x1_cm; 
+            
+            valN.innerText = strikeCount;
+            valX.innerText = targetDepth.toFixed(3) + " cm";
+            let dx = targetDepth - previousDepth;
+            valDx.innerText = dx.toFixed(3) + " cm";
+
+            isAnimating = true;
+            animationProgress = 0;
+            updateAnimation();
+        });
+
+        btnReset.addEventListener('click', () => {
+            if (isAnimating) return;
+            strikeCount = 0;
+            currentDepth = 0;
+            targetDepth = 0;
+            previousDepth = 0;
+            
+            valN.innerText = "0";
+            valX.innerText = "0.00 cm";
+            valDx.innerText = "0.00 cm";
+            
+            btnStrike.disabled = false;
+            
+            drawSim();
+            drawGraph();
+        });
+
+        drawSim();
+        drawGraph();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>曲面滑块受力与能量分析 - 终极推导版</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --bg: #0b1121;
+            --panel: rgba(15, 23, 42, 0.9);
+            --primary: #3b82f6;
+            --text: #f8fafc;
+            --force-g: #ff2a2a;    
+            --force-n: #00e676;    
+            --force-f: #ffaa00;    
+            --velocity-v: #00d4ff; 
+        }
+        body { margin: 0; padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; }
+        h1 { font-size: 24px; color: var(--primary); text-shadow: 0 0 10px rgba(59, 130, 246, 0.5); margin-bottom: 20px;}
+        
+        .container { display: flex; gap: 20px; width: 1050px; max-width: 100%; }
+        
+        /* 左侧视窗：Canvas和控制区 */
+        .left-col { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+        canvas { background: #0f172a; border: 1px solid #334155; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); cursor: pointer; }
+        .controls { background: var(--panel); padding: 15px; border-radius: 8px; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 10px; }
+        .slider-container { display: flex; align-items: center; gap: 10px; }
+        input[type=range] { flex: 1; cursor: pointer; }
+        button { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #2563eb; }
+        
+        /* 右侧视窗：推导解析区 */
+        .right-col { width: 500px; background: var(--panel); border: 1px solid #1e293b; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+        .tabs { display: flex; background: #0f172a; border-bottom: 1px solid #334155; }
+        .tab { flex: 1; padding: 12px 10px; text-align: center; cursor: pointer; font-size: 14px; font-weight: bold; color: #64748b; transition: 0.3s; }
+        .tab.active { color: #fff; background: rgba(59, 130, 246, 0.2); border-bottom: 2px solid var(--primary); }
+        .tab-content { padding: 20px; display: none; overflow-y: auto; flex: 1; font-size: 15px; line-height: 1.6; }
+        .tab-content.active { display: block; }
+        
+        .highlight { background: rgba(59, 130, 246, 0.1); padding: 10px; border-left: 4px solid var(--primary); border-radius: 4px; margin: 15px 0; }
+        .force-legend { display: flex; gap: 15px; font-size: 13px; margin-top: 10px; justify-content: center; }
+        .legend-item { display: flex; align-items: center; gap: 5px; font-weight: bold; }
+        .color-box { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+
+    <h1>变力作功与能量转化分析台</h1>
+
+    <div class="container">
+        <div class="left-col">
+            <canvas id="simCanvas" width="500" height="400"></canvas>
+            
+            <div class="controls">
+                <div class="slider-container">
+                    <label>拖拽滑块查看受力分析：</label>
+                    <input type="range" id="angle-slider" min="0" max="90" value="0" step="1">
+                </div>
+                <button id="play-btn">▶ 播放动画 / 暂停</button>
+                
+                <div class="force-legend">
+                    <div class="legend-item"><div class="color-box" style="background:#ff2a2a"></div> 重力 (G)</div>
+                    <div class="legend-item"><div class="color-box" style="background:#00e676"></div> 支持力 (N)</div>
+                    <div class="legend-item"><div class="color-box" style="background:#ffaa00"></div> 摩擦力 (f_r)</div>
+                    <div class="legend-item"><div class="color-box" style="background:#00d4ff"></div> 速度 (v)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-col">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab(0)">思路一：动能定理</div>
+                <div class="tab" onclick="switchTab(1)">思路二：功能原理</div>
+                <div class="tab" onclick="switchTab(2)">思路三：功的定义</div>
+            </div>
+            
+            <div class="tab-content active" id="tab-0">
+                <p><b>核心思想：</b>合外力对物体所作的总功，等于物体动能的变化量。</p>
+                <p>在物体从 A 滑到 B 的过程中，受三个力作用：重力 \( G \)、轨道支持力 \( N \)、滑动摩擦力 \( f_r \)。</p>
+                <ul>
+                    <li>重力作正功：\( W_G = mgR \)</li>
+                    <li>支持力始终与接触面垂直不做功：\( W_N = 0 \)</li>
+                    <li>摩擦力作未知负功，设为 \( W_f \)</li>
+                </ul>
+                <div class="highlight">
+                    根据动能定理：<br>
+                    $$ W_{\text{net}} = W_G + W_N + W_f = \Delta E_k $$
+                    $$ mgR + W_f = \frac{1}{2}mv_B^2 - 0 $$
+                </div>
+                <p>代入已知数据 (\( m=2, R=4, v_B=6 \)，取 \( g=9.8 \text{ m/s}^2 \))：</p>
+                <p>\( 2 \times 9.8 \times 4 + W_f = \frac{1}{2} \times 2 \times 6^2 \)</p>
+                <p>\( 78.4 + W_f = 36 \)</p>
+                <p>解得：<b>\( W_f = -42.4 \text{ J} \)</b></p>
+            </div>
+
+            <div class="tab-content" id="tab-1">
+                <p><b>核心思想：</b>除重力之外的其他力所作的功，等于系统机械能的变化量。</p>
+                <p>选取 B 点所在水平面为参考平面（重力势能为0）。</p>
+                <p><b>初态 (A点)：</b></p>
+                <ul>
+                    <li>动能：\( E_{k_A} = 0 \)</li>
+                    <li>势能：\( E_{p_A} = mgR \)</li>
+                    <li>机械能：\( E_A = mgR \)</li>
+                </ul>
+                <p><b>末态 (B点)：</b></p>
+                <ul>
+                    <li>动能：\( E_{k_B} = \frac{1}{2}mv_B^2 \)</li>
+                    <li>势能：\( E_{p_B} = 0 \)</li>
+                    <li>机械能：\( E_B = \frac{1}{2}mv_B^2 \)</li>
+                </ul>
+                <div class="highlight">
+                    根据功能原理：<br>
+                    $$ W_{\text{other}} = E_B - E_A $$
+                    $$ W_f = \frac{1}{2}mv_B^2 - mgR $$
+                </div>
+                <p>这在数学上与动能定理殊途同归：</p>
+                <p>\( W_f = 36 - 78.4 = \mathbf{-42.4 \text{ J}} \)</p>
+            </div>
+
+            <div class="tab-content" id="tab-2">
+                <p><b>核心思想：</b>从牛顿第二定律的切向分量出发，结合微积分直接求解阻力作功。</p>
+                <p>不盲目寻找法向力和摩擦因数，而是沿着<b>轨迹切线方向</b>进行动力学分析。</p>
+                <p>在任意角度 \( \theta \)（与水平线 $OA$ 的夹角）处，切线方向的合力提供切向加速度：</p>
+                <p>$$ mg\cos\theta - f_r = m a_t = m\frac{dv}{dt} $$</p>
+                <p>移项得到摩擦力 \( f_r \) 的表达式：</p>
+                <p>$$ f_r = mg\cos\theta - m\frac{dv}{dt} $$</p>
+                <div class="highlight" style="border-left-color: #ef4444;">
+                    <p>根据功的定义，摩擦力作负功，代入微元关系 \( ds = R d\theta \)：</p>
+                    $$ W_f = -\int_{A}^{B} f_r ds = -\int \left(mg\cos\theta - m\frac{dv}{dt}\right) ds $$
+                    <p>利用核心数学技巧：\( \frac{dv}{dt}ds = \frac{ds}{dt}dv = v dv \)，拆分积分：</p>
+                    $$ W_f = -\int_{0}^{\pi/2} mg\cos\theta (R d\theta) + \int_{0}^{v_B} mv dv $$
+                </div>
+                <p>分别对两项进行完美积分：</p>
+                <p>第一项：\( -mgR [\sin\theta]_{0}^{\pi/2} = -mgR \)</p>
+                <p>第二项：\( \frac{1}{2}m [v^2]_{0}^{v_B} = \frac{1}{2}mv_B^2 \)</p>
+                <p>最终优雅地得到：<b>$$ W_f = -mgR + \frac{1}{2}mv_B^2 $$</b></p>
+                <p>代入数据计算：\( W_f = -42.4 \text{ J} \)。</p>
+                <p style="color: #60a5fa; font-size: 13px;"><i>* 评注：这种巧妙的积分变换，实际上是硬核地用微积分重新推导了该特定路径下的动能定理！</i></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ----------------- Canvas 交互与渲染逻辑 -----------------
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const slider = document.getElementById('angle-slider');
+        const playBtn = document.getElementById('play-btn');
+
+        const cx = 350; 
+        const cy = 60;  
+        const R = 240;  
+
+        const V_COLOR = {
+            G: '#ff2a2a',   
+            N: '#00e676',   
+            f: '#ffaa00',   
+            v: '#00d4ff'    
+        };
+
+        let thetaDeg = parseFloat(slider.value);
+        let isPlaying = false;
+        let animId;
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            let thetaRad = thetaDeg * Math.PI / 180;
+
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx - R, cy);
+            ctx.lineTo(cx - R, cy + R + 20); 
+            ctx.moveTo(cx, cy + R);
+            ctx.lineTo(cx, cy + R + 20); 
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(20, cy + R + 20);
+            ctx.lineTo(480, cy + R + 20);
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#f59e0b';
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, Math.PI, Math.PI / 2, true);
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx - R, cy); 
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx, cy + R); 
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.setLineDash([5, 5]);
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.fillStyle = '#fff';
+            ctx.font = "bold 18px Arial";
+            ctx.fillText("O", cx + 10, cy + 5);
+
+            let alpha = Math.PI - thetaRad; 
+            let x = cx + R * Math.cos(alpha);
+            let y = cy + R * Math.sin(alpha);
+
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.setLineDash([]); 
+
+            // 画角度 theta 的圆弧表示
+            if (thetaDeg > 5) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, 50, Math.PI, alpha, true);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = '#fff';
+                ctx.font = "italic 16px 'Times New Roman'";
+                ctx.fillText("θ", cx - 70 * Math.cos(thetaRad/2), cy + 70 * Math.sin(thetaRad/2));
+            }
+
+            ctx.save();
+            ctx.translate(x, y);
+            
+            let tangentAngle = alpha - Math.PI / 2;
+            ctx.rotate(tangentAngle); 
+
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.5)';
+            ctx.fillRect(-20, -24, 40, 24);
+            ctx.strokeStyle = '#1d4ed8';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-20, -24, 40, 24);
+
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(0, -12, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.save();
+            ctx.translate(0, -12); 
+
+            ctx.save();
+            ctx.rotate(-tangentAngle); 
+            drawArrow(ctx, 0, 0, 0, 60, V_COLOR.G, 'G');
+            ctx.restore();
+
+            let n_length = 35 + 35 * Math.sin(thetaRad); 
+            drawArrow(ctx, 0, 0, 0, -n_length, V_COLOR.N, 'N');
+
+            if (thetaDeg > 0 && thetaDeg <= 90) {
+                let f_length = 20 + 20 * Math.sin(thetaRad);
+                drawArrow(ctx, 0, 0, -f_length, 0, V_COLOR.f, 'f_r');
+            }
+
+            if (thetaDeg > 0 && thetaDeg <= 90) {
+                let v_length = 30 + 50 * Math.sin(thetaRad);
+                drawArrow(ctx, 0, 0, v_length, 0, V_COLOR.v, 'v');
+            }
+
+            ctx.restore(); 
+            ctx.restore(); 
+
+            ctx.fillStyle = '#fff';
+            ctx.font = "bold 20px 'Times New Roman'";
+            ctx.fillText("A", cx - R - 25, cy - 10);
+            ctx.fillText("B", cx + 15, cy + R + 15);
+        }
+
+        function drawArrow(ctx, fromx, fromy, tox, toy, color, label) {
+            const headlen = 10; 
+            const dx = tox - fromx;
+            const dy = toy - fromy;
+            const angle = Math.atan2(dy, dx);
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(fromx, fromy);
+            ctx.lineTo(tox, toy);
+            ctx.stroke();
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(tox, toy);
+            ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+
+            if (label) {
+                ctx.font = "italic bold 18px 'Times New Roman'";
+                let offset = (label === 'G' || label === 'N') ? 15 : 10;
+                ctx.fillText(label, tox + offset * Math.cos(angle), toy + offset * Math.sin(angle) + 5);
+            }
+        }
+
+        function animate() {
+            if (isPlaying) {
+                thetaDeg += 0.5; 
+                if (thetaDeg >= 90) {
+                    thetaDeg = 90;
+                    isPlaying = false;
+                }
+                slider.value = thetaDeg;
+                draw();
+                if(isPlaying) {
+                    animId = requestAnimationFrame(animate);
+                }
+            }
+        }
+
+        playBtn.addEventListener('click', () => {
+            if (isPlaying) {
+                isPlaying = false;
+                cancelAnimationFrame(animId);
+            } else {
+                if (thetaDeg >= 90) thetaDeg = 0; 
+                isPlaying = true;
+                animate();
+            }
+        });
+
+        slider.addEventListener('input', (e) => {
+            isPlaying = false;
+            cancelAnimationFrame(animId);
+            thetaDeg = parseFloat(e.target.value);
+            draw();
+        });
+
+        function switchTab(index) {
+            document.querySelectorAll('.tab').forEach((t, i) => {
+                t.className = i === index ? 'tab active' : 'tab';
+            });
+            document.querySelectorAll('.tab-content').forEach((c, i) => {
+                c.className = i === index ? 'tab-content active' : 'tab-content';
+            });
+        }
+
+        draw();
+    </script>
+</body>
+</html>
