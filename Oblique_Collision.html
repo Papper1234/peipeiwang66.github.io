@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 二维斜碰与约束可视化分析台 (几何溯源详尽版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --bg: #0f172a;
+            --primary: #3b82f6;
+            --color-a: #ff3366; 
+            --color-b: #00ccff; 
+            --text: #f8fafc;
+        }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        /* 3D 空间内的数学标签样式 */
+        .label-3d {
+            font-family: 'Times New Roman', Times, serif;
+            font-style: italic;
+            font-size: 18px;
+            font-weight: bold;
+            color: #ffffff;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.9), -1px -1px 4px rgba(0,0,0,0.9);
+            pointer-events: none;
+            margin-top: -10px; 
+            margin-left: 10px;
+        }
+        .label-3d sub { font-size: 12px; }
+
+        .glass-panel { position: absolute; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 12px; z-index: 20; padding: 20px; box-sizing: border-box; pointer-events: auto; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 20; }
+
+        /* 左侧控制台 */
+        #controls-panel { top: 20px; left: 20px; width: 350px; }
+        h1 { margin: 0 0 15px 0; font-size: 18px; color: var(--primary); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; align-items: center; gap: 8px;}
+        .control-group { margin-bottom: 12px; }
+        label { font-size: 13px; color: #e2e8f0; display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: bold; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--primary); }
+        
+        button { background: var(--primary); color: white; border: none; padding: 14px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 14px; width: 100%; margin-top: 10px; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
+        button:hover:not(:disabled) { background: #2563eb; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6); }
+        button:disabled { background: #475569; cursor: not-allowed; opacity: 0.8; box-shadow: none; transform: none; }
+        
+        /* 矢量图例 */
+        .legend-box { margin-top: 15px; background: rgba(0,0,0,0.5); padding: 12px; border-radius: 6px; font-size: 12px; border-left: 3px solid #facc15; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        .leg-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .leg-color { width: 14px; height: 14px; border-radius: 3px; }
+
+        /* 右侧推导面板 */
+        #math-panel { top: 20px; right: 20px; width: 480px; max-height: calc(100vh - 40px); overflow-y: auto; padding-right: 10px; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+        
+        .math-card { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 15px; margin-bottom: 15px; transition: 0.4s; opacity: 0.5; filter: grayscale(80%); }
+        .math-card.active { opacity: 1; filter: grayscale(0%); border-color: var(--primary); background: rgba(59, 130, 246, 0.1); box-shadow: 0 0 20px rgba(59, 130, 246, 0.2); transform: scale(1.02); }
+        .math-card.active-success { opacity: 1; filter: grayscale(0%); border-color: #10b981; background: rgba(16, 185, 129, 0.1); box-shadow: 0 0 20px rgba(16, 185, 129, 0.2); transform: scale(1.02);}
+        
+        .math-card h2 { font-size: 15px; margin: 0 0 10px 0; color: #60a5fa; display: flex; align-items: center; gap: 8px; }
+        .math-card h2::before { content: ''; display: block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+        .math-text { font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+        .highlight { background: rgba(16, 185, 129, 0.15); border-left: 4px solid #10b981; padding: 10px; margin-top: 10px; font-size: 14px; border-radius: 0 6px 6px 0; }
+        
+        #hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 13px; color: rgba(255,255,255,0.8); pointer-events: none; background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 20px; font-weight: bold; border: 1px solid rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div id="controls-panel" class="glass-panel">
+            <h1>⚙️ 碰撞系统核心参数</h1>
+            <div class="control-group">
+                <label style="color: var(--color-a);">A球质量 (m): <span id="val-m1">1.0 kg</span></label>
+                <input type="range" id="m1" min="0.5" max="3.0" value="1.0" step="0.1">
+            </div>
+            <div class="control-group">
+                <label style="color: var(--color-b);">B球悬挂质量 (m'): <span id="val-m2">2.0 kg</span></label>
+                <input type="range" id="m2" min="0.5" max="5.0" value="2.0" step="0.1">
+            </div>
+            <div class="control-group">
+                <label style="color: #facc15;">连心线夹角 (θ): <span id="val-theta">45°</span></label>
+                <input type="range" id="theta" min="10" max="80" value="45" step="1">
+            </div>
+            <div class="control-group">
+                <label style="color: #a855f7;">恢复系数 (e): <span id="val-e">0.8</span></label>
+                <input type="range" id="e" min="0" max="1" value="0.8" step="0.1">
+            </div>
+
+            <button id="btn-action">▶ 第一步：释放 A 球下落</button>
+
+            <div id="vector-legend" class="legend-box" style="display: none;">
+                <div style="font-weight:bold; margin-bottom:8px; color:#facc15;">3D 几何要素说明：</div>
+                <div class="leg-item" id="leg-1"><div class="leg-color" style="background:#aaaaaa;"></div> 灰色：基础正交坐标系 (x, -y)</div>
+                <div class="leg-item"><div class="leg-color" style="background:#ffffff;"></div> 白色虚线：连心线法向(n)与切向(t)</div>
+                <div class="leg-item" id="leg-2" style="display:none;"><div class="leg-color" style="background:#10b981;"></div> 绿色：单位切向向量的几何分解</div>
+                <div class="leg-item" id="leg-3" style="display:none;"><div class="leg-color" style="background:#facc15;"></div> 黄色：A球初始绝对速度 (u)</div>
+                <div class="leg-item" id="leg-4" style="display:none;"><div class="leg-color" style="background:#a855f7;"></div> 紫色：速度 u 在n、t轴的点乘投影</div>
+                <div class="leg-item" id="leg-5" style="display:none;"><div class="leg-color" style="background:#00ccff;"></div> 蓝色：B球碰后真实速度 (v_B)</div>
+                <div class="leg-item" id="leg-6" style="display:none;"><div class="leg-color" style="background:#ff3366;"></div> 红色：A球碰后真实速度 (v_A) 及 x,y 分量</div>
+            </div>
+        </div>
+
+        <div id="math-panel" class="glass-panel">
+            <h1 style="margin-bottom: 20px; font-size: 20px; color: white;">📐 运动学约束深度几何推演</h1>
+            
+            <div class="math-card active" id="card-1">
+                <h2>1. 初始状态与空间方位</h2>
+                <div class="math-text">
+                    A 球以初速度 $u$ 竖直向下坠落。<br>
+                    两球相碰瞬间的**连心线**构成了碰撞冲量的唯一传递轴（即**法向轴 $\hat{n}$**），垂直方向为**切向轴 $\hat{t}$**。
+                </div>
+            </div>
+
+            <div class="math-card" id="card-2">
+                <h2 style="color: #10b981;">2. 坐标系旋转与单位向量解构</h2>
+                <div class="math-text">
+                    <i>(请观察左侧全息透视状态下的几何标注)</i><br>
+                    由同位角和互余关系可知，法向 $\hat{n}$ 与 $-y$ 轴夹角为 $\theta$，则切向 $\hat{t}$ 与水平 $x$ 轴夹角必为 $\theta$。<br>
+                    因此，切向**单位向量** $\hat{t}$ 在基础 $(x,y)$ 坐标系中可分解为直角三角形的邻边与对边：
+                    $$ \hat{t} = (\cos\theta, \sin\theta), \quad \hat{n} = (\sin\theta, -\cos\theta) $$
+                </div>
+            </div>
+
+            <div class="math-card" id="card-3">
+                <h2 style="color: #facc15;">3. 初速度投影与切向守恒定理</h2>
+                <div class="math-text">
+                    将 A 的初速 $\vec{u} = (0, -u)$ 投影到切线方向（即计算向量点乘）：
+                    $$u_t = \vec{u} \cdot \hat{t} = 0 \cdot \cos\theta + (-u)\sin\theta = -u\sin\theta$$
+                    设碰后速度 $\vec{v}_A = (v_{Ax}, v_{Ay})$，同理在切线方向投影为 $v_{At} = v_{Ax}\cos\theta + v_{Ay}\sin\theta$。<br>
+                    **核心物理约束：** 光滑小球无切向摩擦，**切向速度绝对守恒 ($v_{At} = u_t$)**：
+                    $$v_{Ax}\cos\theta + v_{Ay}\sin\theta = -u\sin\theta \quad \text{---(式1)}$$
+                </div>
+            </div>
+
+            <div class="math-card" id="card-4">
+                <h2 style="color: #00ccff;">4. 细绳约束与动量/恢复方程</h2>
+                <div class="math-text">
+                    **水平动量约束：** 细绳约束了 B 只能水平移动，且系统无水平外力，总动量守恒：
+                    $$0 = m v_{Ax} + m' v_B \quad \text{---(式2)}$$
+                    **法向恢复系数：** 沿连心线 $\hat{n}$，发生非完全弹性碰撞。分离相对速度与接近相对速度比为 $e$：
+                    $$v_B\sin\theta - (v_{Ax}\sin\theta - v_{Ay}\cos\theta) = e u \cos\theta \quad \text{---(式3)}$$
+                </div>
+            </div>
+
+            <div class="math-card" id="card-5">
+                <h2 style="color: #ff3366;">5. 求解并用几何奇迹证实守恒</h2>
+                <div class="math-text">
+                    联立三式消元，得到最终的代数解析解：
+                    <div class="highlight" style="margin-bottom: 10px;">
+                        $$v_{Ax} = -\frac{m' u(1+e)\sin\theta\cos\theta}{m\sin^2\theta + m'}$$
+                        <br>
+                        $$v_{Ay} = u \frac{-(m+m')\sin^2\theta + e m'\cos^2\theta}{m\sin^2\theta + m'}$$
+                    </div>
+                    <div style="background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; padding: 10px; border-radius: 6px; color: #a7f3d0; font-weight: bold;">
+                        👀 几何神迹验证：我们在 3D 空间中，从计算出的**真实碰后速度 $\vec{v}_A$** (红箭头) 末端向 $t$ 轴作了一条绿色垂线。你会亲眼看到，它**精准无比地落在了初速度切向投影 $u_t$ (紫箭头) 的尖端上**！这就是“切向守恒”的空间具象化。
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="hint">🖱️ 提示：按住鼠标左键 360° 旋转观察透视结构，滚轮可缩放</div>
+    </div>
+
+    <script>
+        // ================= 1. Three.js 与 CSS2DRenderer 初始化 =================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0f172a, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none'; 
+        container.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; 
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, 0, 0); 
+        controls.maxDistance = 100;
+        controls.minDistance = 10;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); 
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 15);
+        scene.add(dirLight);
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        backLight.position.set(-10, -10, -15);
+        scene.add(backLight);
+
+        const gridHelper = new THREE.GridHelper(80, 40, 0x334155, 0x1e293b);
+        gridHelper.position.y = -20;
+        scene.add(gridHelper);
+
+        // ================= 2. 物理实体与材质 =================
+        const R = 1.5; 
+        const pivotPos = new THREE.Vector3(0, 18, 0);
+        const ropeLength = 18;
+
+        const matA = new THREE.MeshPhongMaterial({ color: 0xff3366, emissive: 0x440011, shininess: 100 }); 
+        const matB = new THREE.MeshPhongMaterial({ color: 0x00ccff, emissive: 0x002244, shininess: 100 }); 
+        const ropeMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+
+        const ballGeo = new THREE.SphereGeometry(R, 32, 32);
+
+        const bracket = new THREE.Mesh(new THREE.BoxGeometry(6, 0.5, 3), new THREE.MeshStandardMaterial({ color: 0x64748b }));
+        bracket.position.copy(pivotPos);
+        scene.add(bracket);
+
+        const pendulumB = new THREE.Group();
+        pendulumB.position.copy(pivotPos);
+        const ropeB = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,-ropeLength,0)]), ropeMat);
+        const meshB = new THREE.Mesh(ballGeo, matB);
+        meshB.position.set(0, -ropeLength, 0);
+        pendulumB.add(ropeB);
+        pendulumB.add(meshB);
+        scene.add(pendulumB);
+
+        const meshA = new THREE.Mesh(ballGeo, matA);
+        scene.add(meshA);
+
+        const auxGroup = new THREE.Group();
+        scene.add(auxGroup);
+        
+        let trailA = [], trailB = [];
+        const matTrailA = new THREE.LineBasicMaterial({color: 0xff3366, transparent: true, opacity: 0.7});
+        const matTrailB = new THREE.LineBasicMaterial({color: 0x00ccff, transparent: true, opacity: 0.7});
+        const lineA = new THREE.Line(new THREE.BufferGeometry(), matTrailA);
+        const lineB = new THREE.Line(new THREE.BufferGeometry(), matTrailB);
+        scene.add(lineA);
+        scene.add(lineB);
+
+        // ================= 3. 核心计算与功能函数 =================
+        const u = 18; 
+        const g = 9.8;
+        let m1 = 1.0, m2 = 2.0, e = 0.8, thetaDeg = 45;
+        let vAx = 0, vAy = 0, vB = 0;
+        let step = 0; 
+        
+        // 核心渲染缩放系数：统一映射实际速度与3D网格长度
+        const VEL_SCALE = 0.6; 
+
+        let posA = new THREE.Vector3();
+        let angleB = 0; 
+        let omegaB = 0; 
+
+        const btnAction = document.getElementById('btn-action');
+        const legend = document.getElementById('vector-legend');
+
+        function setActiveCard(cardNum) {
+            document.querySelectorAll('.math-card').forEach(c => { c.classList.remove('active', 'active-success'); });
+            let target = document.getElementById('card-' + cardNum);
+            if (cardNum === 5) target.classList.add('active-success');
+            else target.classList.add('active');
+        }
+
+        function clearAuxiliary() {
+            auxGroup.children.forEach(child => {
+                if (child.isCSS2DObject) child.element.remove();
+            });
+            auxGroup.clear();
+        }
+
+        function addArrow(origin, dirVec, length, color, headScale = 0.2) {
+            if (dirVec.lengthSq() < 0.0001) return; 
+            let arrow = new THREE.ArrowHelper(dirVec.clone().normalize(), origin, length, color, length * headScale, length * headScale * 0.8);
+            auxGroup.add(arrow);
+            return arrow;
+        }
+
+        function addDashedLine(p1, p2, color) {
+            const material = new THREE.LineDashedMaterial({ color: color, dashSize: 0.5, gapSize: 0.3 });
+            const geometry = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+            const line = new THREE.Line(geometry, material);
+            line.computeLineDistances();
+            auxGroup.add(line);
+        }
+
+        function createLabel(text, color, position) {
+            const div = document.createElement('div');
+            div.className = 'label-3d';
+            div.innerHTML = text; 
+            div.style.color = color;
+            const label = new THREE.CSS2DObject(div);
+            label.position.copy(position);
+            auxGroup.add(label);
+        }
+
+        // 在 XY 平面上绘制精确的圆弧夹角
+        function drawXYArc(center, startAngle, endAngle, radius, color, labelText) {
+            let points = [];
+            let steps = 20;
+            for (let i = 0; i <= steps; i++) {
+                let a = startAngle + (endAngle - startAngle) * (i / steps);
+                points.push(new THREE.Vector3(center.x + radius * Math.cos(a), center.y + radius * Math.sin(a), center.z));
+            }
+            let geom = new THREE.BufferGeometry().setFromPoints(points);
+            let mat = new THREE.LineBasicMaterial({color: color, linewidth: 2});
+            auxGroup.add(new THREE.Line(geom, mat));
+
+            if (labelText) {
+                let midA = (startAngle + endAngle) / 2;
+                createLabel(labelText, color, new THREE.Vector3(center.x + (radius + 1.2) * Math.cos(midA), center.y + (radius + 1.2) * Math.sin(midA), center.z));
+            }
+        }
+
+        function calculatePhysics() {
+            let thetaRad = thetaDeg * Math.PI / 180;
+            vB = (m1 * u * (1 + e) * Math.sin(thetaRad) * Math.cos(thetaRad)) / (m1 * Math.pow(Math.sin(thetaRad), 2) + m2);
+            vAx = -(m2 / m1) * vB;
+            vAy = u * (-(m1 + m2) * Math.pow(Math.sin(thetaRad), 2) + e * m2 * Math.pow(Math.cos(thetaRad), 2)) / (m1 * Math.pow(Math.sin(thetaRad), 2) + m2);
+
+            let s1 = Math.pow(m1, 1/3);
+            let s2 = Math.pow(m2, 1/3);
+            meshA.scale.setScalar(s1);
+            meshB.scale.setScalar(s2);
+            
+            let rA = R * s1;
+            let rB = R * s2;
+            let bCenterY = pivotPos.y - ropeLength;
+            
+            let impactX = -(rA + rB) * Math.sin(thetaRad);
+            let impactY = bCenterY + (rA + rB) * Math.cos(thetaRad);
+            
+            return { impactX, impactY, bCenterY };
+        }
+
+        // ================= 4. 步进控制逻辑状态机 =================
+        function resetSimulation() {
+            step = 0;
+            angleB = 0;
+            omegaB = 0;
+            
+            matA.transparent = false; matA.opacity = 1.0;
+            matB.transparent = false; matB.opacity = 1.0;
+            
+            clearAuxiliary();
+            legend.style.display = 'none';
+            document.querySelectorAll('.leg-item').forEach(el => el.style.display = 'none');
+            document.getElementById('leg-1').style.display = 'flex'; // 默认只有轴说明
+            
+            trailA = []; trailB = [];
+            lineA.geometry.setFromPoints(trailA);
+            lineB.geometry.setFromPoints(trailB);
+            
+            let impact = calculatePhysics();
+            posA.set(impact.impactX, pivotPos.y + 10, 0);
+            meshA.position.copy(posA);
+            pendulumB.rotation.z = 0;
+            
+            btnAction.disabled = false;
+            btnAction.innerText = "▶ 第一步：释放 A 球下落";
+            setActiveCard(1);
+        }
+
+        function drawBaseAxes(aCenter, thetaRad) {
+            // 基础 x, y 轴
+            addDashedLine(aCenter.clone().add(new THREE.Vector3(-4, 0, 0)), aCenter.clone().add(new THREE.Vector3(10, 0, 0)), '#888888'); 
+            addDashedLine(aCenter.clone().add(new THREE.Vector3(0, 5, 0)), aCenter.clone().add(new THREE.Vector3(0, -10, 0)), '#888888'); 
+            createLabel('x', '#888888', aCenter.clone().add(new THREE.Vector3(10.5, 0, 0)));
+            createLabel('-y', '#888888', aCenter.clone().add(new THREE.Vector3(0, -10.5, 0)));
+
+            // n, t 轴
+            let nDir = new THREE.Vector3(Math.sin(thetaRad), -Math.cos(thetaRad), 0);
+            let tDir = new THREE.Vector3(Math.cos(thetaRad), Math.sin(thetaRad), 0);
+            addDashedLine(aCenter.clone().add(nDir.clone().multiplyScalar(-6)), aCenter.clone().add(nDir.clone().multiplyScalar(12)), '#ffffff');
+            addDashedLine(aCenter.clone().add(tDir.clone().multiplyScalar(-8)), aCenter.clone().add(tDir.clone().multiplyScalar(10)), '#ffffff');
+            createLabel('n 轴', '#ffffff', aCenter.clone().add(nDir.clone().multiplyScalar(12.5)));
+            createLabel('t 轴', '#ffffff', aCenter.clone().add(tDir.clone().multiplyScalar(10.5)));
+        }
+
+        btnAction.addEventListener('click', () => {
+            if (step === 0) {
+                step = 1;
+                btnAction.disabled = true;
+                btnAction.innerText = "动画运行中...";
+            } 
+            else if (step === 2) {
+                // 第二步：解剖单位向量与直角坐标关系
+                step = 2.5; 
+                setActiveCard(2);
+                legend.style.display = 'block';
+                document.getElementById('leg-2').style.display = 'flex';
+                
+                matA.transparent = true; matA.opacity = 0.25;
+                matB.transparent = true; matB.opacity = 0.25;
+                
+                let thetaRad = thetaDeg * Math.PI / 180;
+                let aCenter = posA.clone();
+                
+                drawBaseAxes(aCenter, thetaRad);
+                
+                // 绘制两个 θ 夹角证明
+                drawXYArc(aCenter, -Math.PI/2, -Math.PI/2 + thetaRad, 3, '#facc15', 'θ'); // -y 到 n
+                drawXYArc(aCenter, 0, thetaRad, 3, '#facc15', 'θ'); // x 到 t
+                
+                // 【核心视觉】：提取 t 轴单位向量的几何直角三角形证明
+                let tDir = new THREE.Vector3(Math.cos(thetaRad), Math.sin(thetaRad), 0);
+                let visualTLength = 8; 
+                addArrow(aCenter, tDir, visualTLength, 0x10b981, 0.15); 
+                createLabel('t̂', '#10b981', aCenter.clone().add(tDir.clone().multiplyScalar(visualTLength + 1)));
+                
+                // 从单位向量末端向 x 轴作垂线
+                let tEnd = aCenter.clone().add(tDir.clone().multiplyScalar(visualTLength));
+                addDashedLine(tEnd, new THREE.Vector3(tEnd.x, aCenter.y, 0), '#10b981');
+                createLabel('cosθ', '#10b981', new THREE.Vector3(aCenter.x + visualTLength * Math.cos(thetaRad) / 2, aCenter.y - 0.8, 0));
+                createLabel('sinθ', '#10b981', new THREE.Vector3(tEnd.x + 0.8, aCenter.y + visualTLength * Math.sin(thetaRad) / 2, 0));
+                
+                btnAction.innerText = "▶ 第三步：展示初速投影与切向守恒方程";
+            }
+            else if (step === 2.5) {
+                // 第三步：展示初速度 u 的正交投影
+                step = 3;
+                setActiveCard(3);
+                clearAuxiliary();
+                
+                document.getElementById('leg-3').style.display = 'flex';
+                document.getElementById('leg-4').style.display = 'flex';
+                
+                let thetaRad = thetaDeg * Math.PI / 180;
+                let aCenter = posA.clone();
+                drawBaseAxes(aCenter, thetaRad);
+                
+                let nDir = new THREE.Vector3(Math.sin(thetaRad), -Math.cos(thetaRad), 0);
+                let tDir = new THREE.Vector3(Math.cos(thetaRad), Math.sin(thetaRad), 0);
+                
+                // 绘制初速 u
+                let uVec = new THREE.Vector3(0, -u, 0); 
+                addArrow(aCenter, uVec, u * VEL_SCALE, 0xfacc15, 0.2); 
+                createLabel('u', '#facc15', aCenter.clone().add(new THREE.Vector3(1, -u*VEL_SCALE + 1, 0)));
+                
+                // 绘制分解投影
+                let unMag = u * Math.cos(thetaRad) * VEL_SCALE; 
+                let utMag = u * Math.sin(thetaRad) * VEL_SCALE;
+                addArrow(aCenter, nDir, unMag, 0xa855f7); 
+                // u_t 在图中指向左下方，即负的 tDir 方向
+                addArrow(aCenter, tDir.clone().negate(), utMag, 0xa855f7); 
+                
+                createLabel('u<sub>n</sub>', '#a855f7', aCenter.clone().add(nDir.clone().multiplyScalar(unMag + 1)));
+                createLabel('u<sub>t</sub>', '#a855f7', aCenter.clone().add(tDir.clone().negate().multiplyScalar(utMag + 1.5)));
+                
+                // 绘制虚线投影框连结
+                let ptUnEnd = aCenter.clone().add(nDir.clone().multiplyScalar(unMag));
+                let ptUtEnd = aCenter.clone().add(tDir.clone().negate().multiplyScalar(utMag));
+                let ptUEnd = aCenter.clone().add(uVec.clone().multiplyScalar(VEL_SCALE));
+                addDashedLine(ptUnEnd, ptUEnd, 0xa855f7);
+                addDashedLine(ptUtEnd, ptUEnd, 0xa855f7);
+
+                btnAction.innerText = "▶ 第四步：引入 B球约束与动量方程";
+            }
+            else if (step === 3) {
+                // 第四步：展示 B 球的受力与动量方程
+                step = 4;
+                setActiveCard(4);
+                
+                document.getElementById('leg-5').style.display = 'flex';
+                
+                let impact = calculatePhysics();
+                let bCenter = new THREE.Vector3(0, impact.bCenterY, 0);
+                
+                addArrow(bCenter, new THREE.Vector3(1,0,0), Math.abs(vB) * VEL_SCALE, 0x00ccff);
+                createLabel('v<sub>B</sub>', '#00ccff', bCenter.clone().add(new THREE.Vector3(Math.abs(vB)*VEL_SCALE + 1.5, 0, 0)));
+                
+                btnAction.innerText = "▶ 第五步：求解方程并验证【几何神迹】";
+            }
+            else if (step === 4) {
+                // 第五步：终极验证
+                step = 5;
+                setActiveCard(5);
+                
+                document.getElementById('leg-6').style.display = 'flex';
+                
+                let thetaRad = thetaDeg * Math.PI / 180;
+                let aCenter = posA.clone();
+                let tDir = new THREE.Vector3(Math.cos(thetaRad), Math.sin(thetaRad), 0);
+                
+                // 绘制 A 球碰后真实速度
+                let vAVec = new THREE.Vector3(vAx, vAy, 0);
+                let aMag = vAVec.length();
+                addArrow(posA.clone(), vAVec, aMag * VEL_SCALE, 0xff3366);
+                
+                let ptFullEnd = posA.clone().add(vAVec.clone().normalize().multiplyScalar(aMag * VEL_SCALE));
+                createLabel('v<sub>A</sub>', '#ff3366', ptFullEnd.clone().add(new THREE.Vector3(0, -1.5, 0)));
+                
+                // 绘制 vA 分解
+                let vAxVec = new THREE.Vector3(vAx, 0, 0);
+                let vAyVec = new THREE.Vector3(0, vAy, 0);
+                let dMagX = Math.abs(vAx) * VEL_SCALE;
+                let dMagY = Math.abs(vAy) * VEL_SCALE;
+                
+                addArrow(posA.clone(), vAxVec, dMagX, 0xff88aa);
+                addArrow(posA.clone(), vAyVec, dMagY, 0xff88aa);
+                
+                let ptXEnd = posA.clone().add(vAxVec.clone().normalize().multiplyScalar(dMagX));
+                let ptYEnd = posA.clone().add(vAyVec.clone().normalize().multiplyScalar(dMagY));
+                
+                addDashedLine(ptXEnd, ptFullEnd, 0xff88aa);
+                addDashedLine(ptYEnd, ptFullEnd, 0xff88aa);
+                createLabel('v<sub>Ax</sub>', '#ff88aa', ptXEnd.clone().add(new THREE.Vector3(0, 1.5, 0)));
+                createLabel('v<sub>Ay</sub>', '#ff88aa', ptYEnd.clone().add(new THREE.Vector3(-1.5, 0, 0)));
+
+                // ================= 奇迹验证 =================
+                let utMag = u * Math.sin(thetaRad) * VEL_SCALE;
+                let ptUtEnd = aCenter.clone().add(tDir.clone().negate().multiplyScalar(utMag));
+                
+                // 从真实速度 v_A 的末端向初速度的切向分量 u_t 末端拉一条线
+                addDashedLine(ptFullEnd, ptUtEnd, '#10b981'); 
+                
+                btnAction.innerText = "▶ 第六步：解除时空冻结，继续运动";
+            }
+            else if (step === 5) {
+                step = 6;
+                clearAuxiliary(); 
+                legend.style.display = 'none';
+                
+                matA.transparent = false; matA.opacity = 1.0;
+                matB.transparent = false; matB.opacity = 1.0;
+                
+                omegaB = vB / ropeLength; 
+                btnAction.disabled = true;
+                btnAction.innerText = "动画运行中...";
+            }
+            else if (step === 7) {
+                resetSimulation();
+            }
+        });
+
+        ['m1', 'm2', 'theta', 'e'].forEach(id => {
+            document.getElementById(id).addEventListener('input', (ev) => {
+                let val = parseFloat(ev.target.value);
+                if(id === 'theta') document.getElementById('val-'+id).innerText = val + "°";
+                else document.getElementById('val-'+id).innerText = val;
+                
+                m1 = parseFloat(document.getElementById('m1').value);
+                m2 = parseFloat(document.getElementById('m2').value);
+                thetaDeg = parseFloat(document.getElementById('theta').value);
+                e = parseFloat(document.getElementById('e').value);
+                resetSimulation();
+            });
+        });
+
+        // ================= 5. 渲染循环与运动积分 =================
+        const clock = new THREE.Clock();
+
+        function updateTrails() {
+            trailA.push(meshA.position.clone());
+            let bWorldPos = new THREE.Vector3();
+            meshB.getWorldPosition(bWorldPos);
+            trailB.push(bWorldPos);
+            
+            if(trailA.length > 200) trailA.shift();
+            if(trailB.length > 200) trailB.shift();
+            
+            lineA.geometry.setFromPoints(trailA);
+            lineB.geometry.setFromPoints(trailB);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); 
+            
+            let dt = clock.getDelta();
+            if (dt > 0.05) dt = 0.05;
+
+            if (step === 1) {
+                posA.y -= u * dt;
+                meshA.position.copy(posA);
+                updateTrails();
+                
+                let impact = calculatePhysics();
+                if (posA.y <= impact.impactY) {
+                    posA.y = impact.impactY;
+                    meshA.position.copy(posA);
+                    
+                    step = 2; 
+                    btnAction.disabled = false;
+                    btnAction.innerText = "▶ 第二步：坐标系旋转几何论证";
+                }
+            } 
+            else if (step === 6) {
+                vAy -= g * dt; 
+                posA.x += vAx * dt;
+                posA.y += vAy * dt;
+                meshA.position.copy(posA);
+                
+                let angularAcc = -(g / ropeLength) * Math.sin(angleB);
+                omegaB += angularAcc * dt;
+                angleB += omegaB * dt;
+                pendulumB.rotation.z = angleB;
+                
+                updateTrails();
+                
+                if (posA.y < -30) {
+                    step = 7;
+                    btnAction.disabled = false;
+                    btnAction.innerText = "↻ 实验完成，重置场景";
+                }
+            }
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        resetSimulation();
+        animate();
+
+        // ================= Xiao D 开发者专属：一键封面生成器 =================
+        window.addEventListener('keydown', function(e) {
+            // 按下键盘上的字母 'P' 键触发完美截图
+            if(e.key === 'p' || e.key === 'P') {
+                const canvas = document.querySelector('canvas');
+        
+                // 注意：为了让 Three.js 能被截图，你的 renderer 初始化时必须带上 preserveDrawingBuffer: true 
+                // 也就是：new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+
+                const dataURL = canvas.toDataURL('images/png');
+                const link = document.createElement('a');
+                link.download = 'cover_' + document.title + '.png'; // 自动以模型名字命名
+                link.href = dataURL;
+                link.click();
+        
+                // 弹出赛博提示
+                const hint = document.createElement('div');
+                hint.innerHTML = '📸 完美封面已截取！';
+                hint.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#00f2fe; color:#000; padding:10px 20px; border-radius:8px; font-        weight:bold; z-index:99999;';
+                document.body.appendChild(hint);
+                setTimeout(() => hint.remove(), 2000);
+            }
+        });
+
+    </script>
+</body>
+</html>

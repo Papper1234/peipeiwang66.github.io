@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 冲击摆碰撞实验室：分步推导版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --bg: #050510;
+            --panel: rgba(15, 23, 42, 0.75); /* 增加透明度，露出背景 */
+            --primary: #3b82f6;
+            --text: #f8fafc;
+            --color-a: #ef4444; 
+            --color-b: #0ea5e9; 
+            --color-ab: #10b981; 
+        }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; }
+        
+        /* UI 布局优化：缩窄面板，让出中间视野 */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; justify-content: space-between; padding: 15px; box-sizing: border-box; z-index: 10; }
+        .panel { background: var(--panel); border: 1px solid rgba(51, 65, 85, 0.8); border-radius: 8px; padding: 15px; pointer-events: auto; box-shadow: 0 4px 30px rgba(0,0,0,0.6); backdrop-filter: blur(8px); display: flex; flex-direction: column; }
+        
+        /* 左侧控制与数据面板 */
+        .left-col { width: 280px; gap: 12px; }
+        h1 { margin: 0 0 10px 0; font-size: 18px; color: var(--primary); border-bottom: 2px solid #1e293b; padding-bottom: 8px; }
+        
+        .control-group { margin-bottom: 10px; }
+        label { font-size: 13px; color: #cbd5e1; display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--primary); }
+        
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 14px; width: 100%; margin-top: 5px; }
+        button:hover:not(:disabled) { background: #2563eb; box-shadow: 0 0 15px rgba(59, 130, 246, 0.6); transform: translateY(-2px); }
+        button:disabled { background: #475569; cursor: not-allowed; opacity: 0.8; }
+        
+        .data-box { background: rgba(0,0,0,0.5); border-left: 4px solid var(--primary); padding: 8px 12px; border-radius: 4px; margin-top: 8px; }
+        .data-title { font-size: 11px; color: #94a3b8; text-transform: uppercase; }
+        .data-value { font-family: monospace; font-size: 18px; font-weight: bold; margin-top: 2px; }
+
+        /* 右侧理论推导面板 */
+        .right-col { width: 380px; overflow-y: auto; max-height: calc(100vh - 30px); padding-right: 10px; }
+        
+        /* 步进式卡片样式 */
+        .math-card { background: rgba(0,0,0,0.3); border: 1px solid #1e293b; border-radius: 8px; padding: 15px; margin-bottom: 15px; transition: all 0.4s ease; opacity: 0.4; filter: grayscale(80%); }
+        .math-card h2 { font-size: 15px; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px; }
+        .math-card h2::before { content: ''; display: block; width: 8px; height: 8px; border-radius: 50%; background: #475569; }
+        .math-text { font-size: 13px; line-height: 1.6; color: #e2e8f0; }
+        
+        /* 高亮激活的卡片 */
+        .math-card.active { opacity: 1; filter: grayscale(0%); background: rgba(59, 130, 246, 0.08); border-color: var(--primary); box-shadow: 0 0 20px rgba(59, 130, 246, 0.15); transform: scale(1.02); }
+        .math-card.active h2::before { background: var(--primary); box-shadow: 0 0 8px var(--primary); }
+        
+        .math-card.active-success { opacity: 1; filter: grayscale(0%); background: rgba(16, 185, 129, 0.08); border-color: var(--color-ab); box-shadow: 0 0 20px rgba(16, 185, 129, 0.15); }
+        .math-card.active-success h2 { color: var(--color-ab); }
+        .math-card.active-success h2::before { background: var(--color-ab); box-shadow: 0 0 8px var(--color-ab); }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="panel left-col">
+            <h1>冲击摆实验参数</h1>
+            
+            <div class="control-group">
+                <label style="color: var(--color-a);">A球质量 (m₁): <span id="val-m1">1.0 kg</span></label>
+                <input type="range" id="m1" min="0.5" max="5.0" value="1.0" step="0.1">
+            </div>
+            
+            <div class="control-group">
+                <label style="color: var(--color-b);">B物 (蹄状) 质量 (m₂): <span id="val-m2">1.5 kg</span></label>
+                <input type="range" id="m2" min="0.5" max="5.0" value="1.5" step="0.1">
+            </div>
+
+            <div class="control-group">
+                <label style="color: #fbbf24;">初始张角 (θ): <span id="val-theta">60.0°</span></label>
+                <input type="range" id="theta" min="10" max="90" value="60" step="1">
+            </div>
+
+            <button id="btn-action">▶ 执行第一阶段：释放 A 球</button>
+            
+            <div class="data-box" style="border-color: var(--color-a); margin-top: 15px;">
+                <div class="data-title">碰前 A 球极值速度 (v₁)</div>
+                <div class="data-value" id="disp-v1">0.00 m/s</div>
+            </div>
+            
+            <div class="data-box" style="border-color: var(--color-ab);">
+                <div class="data-title">碰后共同初速度 (v₂)</div>
+                <div class="data-value" id="disp-v2">--</div>
+            </div>
+
+            <div class="data-box" style="border-color: #fbbf24;">
+                <div class="data-title">当前张角 (实时)</div>
+                <div class="data-value" id="disp-angle" style="color: #fbbf24;">60.0°</div>
+            </div>
+        </div>
+
+        <div class="panel right-col">
+            <h1 style="margin-bottom: 20px;">分步推导解析</h1>
+            
+            <div class="math-card active" id="card-1">
+                <h2 style="color: #60a5fa;">阶段一：A球自由下落</h2>
+                <div class="math-text">
+                    在这个过程中，只有重力作功，绳子拉力与速度垂直，**A球机械能守恒**。<br>
+                    设绳长为 $L$，以最低点为零势能面：
+                    $$ m_1 g L(1 - \cos\theta) = \frac{1}{2}m_1 v_1^2 $$
+                    解得碰前瞬间 A 球的速度：
+                    $$ v_1 = \sqrt{2gL(1 - \cos\theta)} $$
+                </div>
+            </div>
+
+            <div class="math-card" id="card-2">
+                <h2 style="color: #f472b6;">阶段二：A嵌入B (碰撞)</h2>
+                <div class="math-text">
+                    A球与蹄状物B在最低点发生**完全非弹性碰撞**。<br>
+                    碰撞极短，水平方向外力为零，**动量守恒**。但伴随剧烈形变，动能大量转化为内能。
+                    $$ m_1 v_1 + 0 = (m_1 + m_2) v_2 $$
+                    解得碰后瞬间的共同初速度：
+                    $$ v_2 = \frac{m_1}{m_1 + m_2}v_1 $$
+                </div>
+            </div>
+
+            <div class="math-card" id="card-3">
+                <h2 style="color: #fbbf24;">阶段三：结合体上升</h2>
+                <div class="math-text">
+                    质量为 $(m_1+m_2)$ 的结合体以 $v_2$ 向上摆动。<br>
+                    此过程再次只有重力作功，**结合体的机械能守恒**。
+                    $$ \frac{1}{2}(m_1 + m_2) v_2^2 = (m_1 + m_2) g L(1 - \cos\varphi) $$
+                    将 $v_1, v_2$ 代入化简：
+                    $$ 1 - \cos\varphi = \frac{1}{2gL} \left( \frac{m_1}{m_1 + m_2} v_1 \right)^2 $$
+                </div>
+            </div>
+
+            <div class="math-card" id="card-4">
+                <h2>终极目标：最大张角 φ</h2>
+                <div class="math-text">
+                    <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; text-align: center; font-size: 15px; font-weight: bold; color: #10b981;">
+                        $$ \cos\varphi = 1 - \left( \frac{m_1}{m_1 + m_2} \right)^2 (1 - \cos\theta) $$
+                    </div>
+                    <div style="text-align: center; margin-top: 10px; font-size: 16px;">
+                        理论预测 φ = <span id="disp-phi" style="color: #10b981; font-weight: bold;">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= 1. Three.js 场景初始化 =================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050510, 0.015);
+
+        // 相机焦点偏移：稍微向左看，使得摆锤正好在左右UI面板中间的空隙
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 45);
+        camera.lookAt(-2, -8, 0); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight.position.set(10, 20, 20);
+        scene.add(pointLight);
+
+        // 背景网格辅助线
+        const gridHelper = new THREE.GridHelper(60, 30, 0x334155, 0x1e293b);
+        gridHelper.position.y = -25;
+        scene.add(gridHelper);
+
+        // 悬挂枢轴点
+        const pivotPos = new THREE.Vector3(-2, 10, 0);
+        const L = 20; 
+
+        // 顶部支架
+        const bracketGeo = new THREE.BoxGeometry(10, 1, 2);
+        const bracketMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
+        const bracket = new THREE.Mesh(bracketGeo, bracketMat);
+        bracket.position.copy(pivotPos);
+        scene.add(bracket);
+
+        // 材质定义
+        const matA = new THREE.MeshPhysicalMaterial({ color: 0xef4444, roughness: 0.2, metalness: 0.5 }); 
+        // 蹄状物B：虚化半透明
+        const matB = new THREE.MeshPhysicalMaterial({ color: 0x0ea5e9, roughness: 0.2, metalness: 0.2, transparent: true, opacity: 0.45, side: THREE.DoubleSide }); 
+        const ropeMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+
+        // A球实体
+        const ballGeo = new THREE.SphereGeometry(1.5, 32, 32);
+
+        // 蹄状物 (C型结构) 建模：开口朝向 +X
+        const hoofShape = new THREE.Shape();
+        hoofShape.moveTo(2.5, 3);
+        hoofShape.lineTo(-3, 3);
+        hoofShape.lineTo(-3, -3);
+        hoofShape.lineTo(2.5, -3);
+        hoofShape.lineTo(2.5, -2);
+        hoofShape.lineTo(-2, -2); // 内部口袋
+        hoofShape.lineTo(-2, 2);  // 内部口袋
+        hoofShape.lineTo(2.5, 2);
+        hoofShape.lineTo(2.5, 3);
+        
+        const extrudeSettings = { depth: 4, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: 0.1, bevelThickness: 0.1 };
+        const hoofGeo = new THREE.ExtrudeGeometry(hoofShape, extrudeSettings);
+        hoofGeo.translate(0, 0, -2); // 居中Z轴
+
+        // ================= 组合 =================
+        // Pendulum A
+        const pendulumA = new THREE.Group();
+        pendulumA.position.copy(pivotPos);
+        const ropeA = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,-L,0)]), ropeMat);
+        const meshA = new THREE.Mesh(ballGeo, matA);
+        meshA.position.set(0, -L, 0);
+        pendulumA.add(ropeA);
+        pendulumA.add(meshA);
+        scene.add(pendulumA);
+
+        // Pendulum B
+        const pendulumB = new THREE.Group();
+        pendulumB.position.copy(pivotPos);
+        const ropeB = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,-L,0)]), ropeMat);
+        
+        const meshB = new THREE.Mesh(hoofGeo, matB);
+        meshB.position.set(0, -L, 0);
+        
+        // 【关键设计】在 B 内预先埋入一个 A 球的克隆体，用于展示嵌入效果
+        const meshA_embedded = new THREE.Mesh(ballGeo, matA);
+        meshA_embedded.position.set(0, -L, 0);
+        meshA_embedded.visible = false; // 初始隐藏
+
+        pendulumB.add(ropeB);
+        pendulumB.add(meshB);
+        pendulumB.add(meshA_embedded);
+        scene.add(pendulumB);
+
+        // ================= 2. 物理状态机变量 =================
+        const g = 9.8;
+        let m1 = parseFloat(document.getElementById('m1').value);
+        let m2 = parseFloat(document.getElementById('m2').value);
+        let thetaDeg = parseFloat(document.getElementById('theta').value);
+        
+        let alpha = thetaDeg * Math.PI / 180; 
+        let omega = 0; 
+        
+        // 状态机：0=就绪, 1=下落动画, 2=碰撞等待, 3=上升动画, 4=完成
+        let stage = 0; 
+        let isAnimating = false;
+        
+        let v1_theory = 0;
+        let v2_theory = 0;
+        let phi_theory = 0;
+
+        // UI 元素
+        const btnAction = document.getElementById('btn-action');
+        const dispV1 = document.getElementById('disp-v1');
+        const dispV2 = document.getElementById('disp-v2');
+        const dispAngle = document.getElementById('disp-angle');
+        const dispPhi = document.getElementById('disp-phi');
+
+        function setActiveCard(step) {
+            document.querySelectorAll('.math-card').forEach(el => {
+                el.classList.remove('active');
+                el.classList.remove('active-success');
+            });
+            if(step > 0) {
+                let card = document.getElementById('card-' + step);
+                if(step === 4) card.classList.add('active-success');
+                else card.classList.add('active');
+            }
+        }
+
+        function calculateTheory() {
+            let thetaRad = thetaDeg * Math.PI / 180;
+            v1_theory = Math.sqrt(2 * g * L * (1 - Math.cos(thetaRad)));
+            v2_theory = (m1 / (m1 + m2)) * v1_theory;
+            
+            let cosPhi = 1 - Math.pow(m1/(m1+m2), 2) * (1 - Math.cos(thetaRad));
+            phi_theory = Math.acos(cosPhi) * 180 / Math.PI;
+
+            // 质量视觉缩放
+            let s1 = Math.pow(m1, 1/3);
+            let s2 = Math.pow(m2, 1/3);
+            meshA.scale.setScalar(s1);
+            meshA_embedded.scale.setScalar(s1);
+            meshB.scale.setScalar(s2);
+            
+            dispPhi.innerText = phi_theory.toFixed(2) + "°";
+            if (stage === 0) {
+                dispV1.innerText = v1_theory.toFixed(2) + " m/s";
+                dispV2.innerText = "--";
+            }
+        }
+
+        function resetSimulation() {
+            isAnimating = false;
+            stage = 0;
+            alpha = thetaDeg * Math.PI / 180;
+            omega = 0;
+            
+            pendulumA.visible = true;
+            meshA_embedded.visible = false;
+            
+            pendulumA.rotation.z = alpha;
+            pendulumB.rotation.z = 0; 
+            
+            dispAngle.innerText = thetaDeg.toFixed(1) + "°";
+            btnAction.disabled = false;
+            btnAction.innerText = "▶ 执行第一阶段：释放 A 球";
+            
+            setActiveCard(1);
+            calculateTheory();
+        }
+
+        // ================= 3. 步进式控制核心 =================
+        btnAction.addEventListener('click', () => {
+            if (stage === 0) {
+                // 启动下落
+                stage = 1;
+                isAnimating = true;
+                btnAction.disabled = true;
+                btnAction.innerText = "动画运行中...";
+            } 
+            else if (stage === 1) {
+                // 瞬间执行碰撞
+                stage = 2;
+                setActiveCard(2);
+                
+                // 视觉合并：隐藏A原摆，显示嵌入B的A球
+                pendulumA.visible = false;
+                meshA_embedded.visible = true;
+                
+                // 动量守恒重置角速度
+                omega = -(m1 / (m1 + m2)) * (v1_theory / L); 
+                dispV2.innerText = v2_theory.toFixed(2) + " m/s";
+                
+                btnAction.innerText = "▶ 执行第三阶段：结合体上升";
+            }
+            else if (stage === 2) {
+                // 启动上升
+                stage = 3;
+                setActiveCard(3);
+                isAnimating = true;
+                btnAction.disabled = true;
+                btnAction.innerText = "动画运行中...";
+            }
+            else if (stage === 4) {
+                resetSimulation();
+            }
+        });
+
+        // 参数滑块绑定
+        ['m1', 'm2', 'theta'].forEach(id => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                let val = parseFloat(e.target.value);
+                if(id === 'theta') document.getElementById('val-theta').innerText = val.toFixed(1) + "°";
+                else document.getElementById('val-'+id).innerText = val.toFixed(1) + " kg";
+                
+                // 强制重置
+                thetaDeg = parseFloat(document.getElementById('theta').value);
+                m1 = parseFloat(document.getElementById('m1').value);
+                m2 = parseFloat(document.getElementById('m2').value);
+                resetSimulation();
+            });
+        });
+
+        // ================= 4. 渲染与物理主循环 =================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            let dt = clock.getDelta();
+            if (dt > 0.05) dt = 0.05; 
+
+            if (isAnimating) {
+                // 单摆受力积分
+                let angularAcc = -(g / L) * Math.sin(alpha);
+                omega += angularAcc * dt;
+                alpha += omega * dt;
+
+                if (stage === 1) {
+                    pendulumA.rotation.z = alpha;
+                    if (alpha <= 0) {
+                        // 准确抵达最低点
+                        alpha = 0;
+                        pendulumA.rotation.z = 0;
+                        omega = -v1_theory / L; // 消除数值误差，赋予精确动能
+                        
+                        isAnimating = false;
+                        btnAction.disabled = false;
+                        btnAction.innerText = "▶ 执行第二阶段：A球嵌入蹄状物";
+                    }
+                } 
+                else if (stage === 3) {
+                    pendulumB.rotation.z = alpha;
+                    if (omega >= 0) { 
+                        // 到达最高点 (由于是向左摆，omega从负变正时即为最高点)
+                        omega = 0;
+                        alpha = -phi_theory * Math.PI / 180; // 精确对齐理论推导值
+                        pendulumB.rotation.z = alpha;
+                        
+                        isAnimating = false;
+                        stage = 4;
+                        btnAction.disabled = false;
+                        btnAction.innerText = "↻ 实验完成，重置场景";
+                        setActiveCard(4); // 最终结论高亮
+                    }
+                }
+
+                dispAngle.innerText = (Math.abs(alpha) * 180 / Math.PI).toFixed(1) + "°";
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        resetSimulation();
+        animate();
+
+        // ================= Xiao D 开发者专属：一键封面生成器 =================
+        window.addEventListener('keydown', function(e) {
+            // 按下键盘上的字母 'P' 键触发完美截图
+            if(e.key === 'p' || e.key === 'P') {
+                const canvas = document.querySelector('canvas');
+        
+                // 注意：为了让 Three.js 能被截图，你的 renderer 初始化时必须带上 preserveDrawingBuffer: true 
+                // 也就是：new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+
+                const dataURL = canvas.toDataURL('images/png');
+                const link = document.createElement('a');
+                link.download = 'cover_' + document.title + '.png'; // 自动以模型名字命名
+                link.href = dataURL;
+                link.click();
+        
+                // 弹出赛博提示
+                const hint = document.createElement('div');
+                hint.innerHTML = '📸 完美封面已截取！';
+                hint.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#00f2fe; color:#000; padding:10px 20px; border-radius:8px; font-        weight:bold; z-index:99999;';
+                document.body.appendChild(hint);
+                setTimeout(() => hint.remove(), 2000);
+            }
+        });
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 逆风行舟物理推演台</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    <script>
+        MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] }, svg: { fontCache: 'global' } };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --bg: #0f172a; --primary: #3b82f6; --text: #f8fafc;
+            --c-wind: #e2e8f0; --c-fsail: #facc15; --c-fgo: #ef4444; --c-fside: #a855f7; --c-fwater: #10b981;
+        }
+        body { margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .label-3d { font-family: 'Times New Roman', Times, serif; font-style: italic; font-size: 16px; font-weight: bold; color: #fff; text-shadow: 1px 1px 3px #000; pointer-events: none; margin-top: -10px; margin-left: 10px; }
+        
+        .glass-panel { position: absolute; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 8px 32px 0 rgba(0,0,0,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 12px; z-index: 20; padding: 20px; box-sizing: border-box; pointer-events: auto; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 20; }
+
+        /* 左侧控制台 */
+        #controls-panel { top: 20px; left: 20px; width: 340px; }
+        h1 { margin: 0 0 15px 0; font-size: 18px; color: var(--primary); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; align-items: center; gap: 8px;}
+        .control-group { margin-bottom: 12px; }
+        label { font-size: 13px; color: #e2e8f0; display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: bold; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--primary); }
+        
+        button { background: var(--primary); color: white; border: none; padding: 14px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 14px; width: 100%; margin-top: 10px; }
+        button:hover:not(:disabled) { background: #2563eb; transform: translateY(-2px); box-shadow: 0 4px 15px rgba(59,130,246,0.5); }
+        
+        .legend-box { margin-top: 15px; background: rgba(0,0,0,0.5); padding: 12px; border-radius: 6px; font-size: 12px; border-left: 3px solid var(--c-fsail); }
+        .leg-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-weight: bold;}
+        .leg-color { width: 14px; height: 14px; border-radius: 3px; }
+
+        /* 右侧推导面板 */
+        #math-panel { top: 20px; right: 20px; width: 440px; max-height: calc(100vh - 40px); overflow-y: auto; padding-right: 10px; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+        
+        .math-card { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 15px; margin-bottom: 15px; transition: 0.4s; opacity: 0.4; filter: grayscale(100%);}
+        .math-card.active { opacity: 1; filter: grayscale(0%); border-color: var(--primary); background: rgba(59, 130, 246, 0.1); transform: scale(1.02); }
+        .math-card h2 { font-size: 15px; margin: 0 0 10px 0; color: #60a5fa; }
+        .math-text { font-size: 13px; line-height: 1.6; color: #e2e8f0; }
+        .highlight { background: rgba(255, 255, 255, 0.05); padding: 10px; margin-top: 10px; font-size: 14px; border-radius: 6px; border-left: 4px solid var(--primary); }
+        
+        #hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 13px; color: rgba(255,255,255,0.8); pointer-events: none; background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 20px; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div id="controls-panel" class="glass-panel">
+            <h1>⛵ 逆风行舟参数台</h1>
+            <div class="control-group">
+                <label style="color: var(--c-wind);">航向夹角 (与逆风夹角 α): <span id="val-boat">45°</span></label>
+                <input type="range" id="boat-angle" min="20" max="70" value="45" step="1">
+            </div>
+            <div class="control-group">
+                <label style="color: #fff;">帆面夹角 (与船身夹角 β): <span id="val-sail">25°</span></label>
+                <input type="range" id="sail-angle" min="5" max="60" value="25" step="1">
+            </div>
+
+            <button id="btn-next">▶ 第一步：风与帆的冲量交换</button>
+
+            <div id="legend" class="legend-box" style="display:none;">
+                <div style="font-weight:bold; margin-bottom:8px; color:var(--c-fsail);">3D 受力矢量说明：</div>
+                <div class="leg-item" id="leg-wind"><div class="leg-color" style="background:var(--c-wind);"></div> 白色：风向矢量 (W)</div>
+                <div class="leg-item" id="leg-fsail" style="display:none;"><div class="leg-color" style="background:var(--c-fsail);"></div> 黄色：空气对帆的作用力 (F_sail)</div>
+                <div class="leg-item" id="leg-decomp" style="display:none;"><div class="leg-color" style="background:var(--c-fgo);"></div> 红色：纵向驱动力 (F_forward)</div>
+                <div class="leg-item" id="leg-decomp2" style="display:none;"><div class="leg-color" style="background:var(--c-fside);"></div> 紫色：横向漂移力 (F_side)</div>
+                <div class="leg-item" id="leg-water" style="display:none;"><div class="leg-color" style="background:var(--c-fwater);"></div> 绿色：水对龙骨的阻力 (F_water)</div>
+            </div>
+        </div>
+
+        <div id="math-panel" class="glass-panel">
+            <h1 style="margin-bottom: 15px; font-size: 18px;">📐 动力学拆解</h1>
+            
+            <div class="math-card active" id="card-1">
+                <h2>1. 动量定理与帆的偏折</h2>
+                <div class="math-text">
+                    风（空气分子）以速度 $\vec{W}$ 吹向帆面。帆面迫使空气改变流动方向，导致空气动量发生改变 $\Delta\vec{p}$。<br>
+                    根据动量定理 $\vec{F}_{帆对气} \Delta t = \Delta\vec{p}$，帆对空气施加了力。
+                </div>
+            </div>
+
+            <div class="math-card" id="card-2">
+                <h2 style="color: var(--c-fsail);">2. 牛顿第三定律：帆面受力</h2>
+                <div class="math-text">
+                    根据牛顿第三定律（作用力与反作用力），空气会对帆施加一个等大反向的力 $\vec{F}_{sail}$。<br>
+                    这个力**永远垂直于帆面**。
+                    <div class="highlight" style="border-color: var(--c-fsail);">
+                        $\vec{F}_{sail} = k (\vec{W} \cdot \vec{n}) \hat{n}$
+                    </div>
+                </div>
+            </div>
+
+            <div class="math-card" id="card-3">
+                <h2 style="color: var(--c-fgo);">3. 矢量的正交分解：前进的曙光</h2>
+                <div class="math-text">
+                    帆船只能沿着流线型的船身（船头方向）前进。我们将垂直于帆的 $\vec{F}_{sail}$ 沿船身和垂直船身进行正交分解：
+                    <br>1. 纵向推力 $\vec{F}_{forward}$ (红色)：这是逆风前行的**唯一动力**！
+                    <br>2. 横向推力 $\vec{F}_{side}$ (紫色)：它试图把船侧翻。
+                </div>
+            </div>
+
+            <div class="math-card" id="card-4">
+                <h2 style="color: var(--c-fwater);">4. 牛三再现：龙骨化解危机</h2>
+                <div class="math-text">
+                    为了对抗横向的 $\vec{F}_{side}$，船底安装了深插水下的**龙骨**。<br>
+                    当船试图侧向漂移时，挤压水流。根据牛顿第三定律，水对龙骨产生巨大的反向阻力 $\vec{F}_{water}$，完美抵消了 $\vec{F}_{side}$。<br>
+                    <div class="highlight" style="border-color: var(--c-fwater); background: rgba(16,185,129,0.1);">
+                        **最终结局：**<br>
+                        $\vec{F}_{side} + \vec{F}_{water} = 0$<br>
+                        合外力 $= \vec{F}_{forward}$ (船向着逆风方向的斜前方加速前进！)
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="hint">🖱️ 提示：按住鼠标左键 360° 旋转视角，观察空间受力矢量</div>
+    </div>
+
+    <script>
+        // ================= 1. 初始化 3D 引擎 =================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0f172a, 0.005);
+        scene.background = new THREE.Color(0x0a192f); // 深海水色
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(-30, 25, 30);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none'; 
+        container.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; 
+        controls.target.set(0, 0, 0); 
+        controls.maxDistance = 100;
+
+        // 光影
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 20);
+        scene.add(dirLight);
+
+        // 海面网格
+        const gridHelper = new THREE.GridHelper(100, 50, 0x1e293b, 0x0f172a);
+        gridHelper.position.y = -2;
+        scene.add(gridHelper);
+        
+        // 动态风粒子系统
+        const windParticles = new THREE.Group();
+        scene.add(windParticles);
+        const windMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+        for(let i=0; i<150; i++) {
+            let z = Math.random() * 80 - 40;
+            let x = Math.random() * 80 - 40;
+            let y = Math.random() * 15;
+            let geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x,y,z), new THREE.Vector3(x,y,z+4)]);
+            let line = new THREE.Line(geom, windMat);
+            windParticles.add(line);
+        }
+
+        // ================= 2. 构建帆船模型 =================
+        const boatGroup = new THREE.Group();
+        scene.add(boatGroup);
+
+        // 船身 (用简单拉伸几何体代表流线型)
+        const hullShape = new THREE.Shape();
+        hullShape.moveTo(0, 4);  // 船头
+        hullShape.quadraticCurveTo(2, 0, 1.5, -6);
+        hullShape.lineTo(-1.5, -6);
+        hullShape.quadraticCurveTo(-2, 0, 0, 4);
+        const hullExtrude = { depth: 1.5, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: 0.2, bevelThickness: 0.2 };
+        const hullGeo = new THREE.ExtrudeGeometry(hullShape, hullExtrude);
+        hullGeo.rotateX(Math.PI / 2);
+        hullGeo.translate(0, -1, 0);
+        const hullMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.3 });
+        const hull = new THREE.Mesh(hullGeo, hullMat);
+        boatGroup.add(hull);
+
+        // 桅杆
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 12), new THREE.MeshStandardMaterial({ color: 0x475569 }));
+        mast.position.set(0, 5, -1);
+        boatGroup.add(mast);
+
+        // 龙骨 (水下)
+        const keel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4, 3), new THREE.MeshStandardMaterial({ color: 0x10b981 }));
+        keel.position.set(0, -4, -1);
+        boatGroup.add(keel);
+
+        // 帆 (单独控制角度)
+        const sailGroup = new THREE.Group();
+        sailGroup.position.set(0, 5, -1); // 围绕桅杆旋转
+        boatGroup.add(sailGroup);
+        
+        // 用双面材质画弧形的帆
+        const sailShape = new THREE.Shape();
+        sailShape.moveTo(0, 5);
+        sailShape.quadraticCurveTo(-2, 0, 0, -5); // 鼓起的帆
+        sailShape.lineTo(0.1, -5);
+        sailShape.quadraticCurveTo(-1.8, 0, 0.1, 5);
+        const sailGeo = new THREE.ShapeGeometry(sailShape);
+        const sailMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, side: THREE.DoubleSide, transparent:true, opacity:0.9 });
+        const sailMesh = new THREE.Mesh(sailGeo, sailMat);
+        sailMesh.rotation.x = Math.PI / 2;
+        sailMesh.position.set(0, -5, 0); // 调整回原点
+        sailGroup.add(sailMesh);
+
+        // 矢量图层
+        const vectorGroup = new THREE.Group();
+        scene.add(vectorGroup);
+
+        // ================= 3. 核心物理逻辑 =================
+        let alphaDeg = 45; // 船身航向与逆风夹角
+        let betaDeg = 25;  // 帆与船身夹角
+        let step = 0;
+
+        function setActiveCard(num) {
+            document.querySelectorAll('.math-card').forEach(c => c.classList.remove('active'));
+            if(num > 0) document.getElementById('card-' + num).classList.add('active');
+        }
+
+        function createLabel(text, color) {
+            const div = document.createElement('div');
+            div.className = 'label-3d'; div.innerHTML = text; div.style.color = color;
+            const label = new THREE.CSS2DObject(div);
+            vectorGroup.add(label); return label;
+        }
+
+        function addArrow(origin, dir, length, color) {
+            if (length < 0.1) return;
+            const arrow = new THREE.ArrowHelper(dir.clone().normalize(), origin, length, color, length*0.2, length*0.1);
+            vectorGroup.add(arrow); return arrow;
+        }
+
+        function addDashedLine(p1, p2, color) {
+            const mat = new THREE.LineDashedMaterial({ color: color, dashSize: 0.5, gapSize: 0.3 });
+            const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+            const line = new THREE.Line(geo, mat);
+            line.computeLineDistances();
+            vectorGroup.add(line);
+        }
+
+        // 核心更新函数
+        function updateVectors() {
+            vectorGroup.clear();
+            vectorGroup.children = vectorGroup.children.filter(c => c.isCSS2DObject);
+
+            let alpha = alphaDeg * Math.PI / 180;
+            let beta = betaDeg * Math.PI / 180;
+
+            // 1. 坐标与几何变换
+            // 风始终从 -Z 吹向 +Z。即 W = (0, 0, 1)
+            let wDir = new THREE.Vector3(0, 0, 1);
+            
+            // 船试图向 -Z 方向开，偏角为 alpha。
+            // 假设向右舷偏转 (X > 0)。船头向量 B:
+            boatGroup.rotation.y = -alpha + Math.PI; // Threejs中Y轴旋转
+            let bDir = new THREE.Vector3(Math.sin(alpha), 0, -Math.cos(alpha)); 
+            
+            // 帆的角度相对于船身偏转 beta。
+            sailGroup.rotation.y = beta;
+            let sailAngleGlobal = alpha - beta; // 帆面相对于 -Z 的夹角
+            
+            // 帆面的法向量 (受风力方向，垂直于帆面)
+            // 帆面方向向量 S = (sin(alpha-beta), 0, -cos(alpha-beta))
+            // 法线 N = (-cos(alpha-beta), 0, -sin(alpha-beta))
+            let nDir = new THREE.Vector3(-Math.cos(sailAngleGlobal), 0, -Math.sin(sailAngleGlobal));
+
+            // 物理常量与计算
+            let windSpeed = 10;
+            let forceCenter = new THREE.Vector3(0, 5, 0); // 桅杆中心
+            let keelCenter = new THREE.Vector3(0, -2, 0); // 龙骨中心
+
+            // 第 1 步：风的冲量
+            if (step >= 1) {
+                // 画风的相对速度箭头打在帆上
+                let pStart = forceCenter.clone().add(new THREE.Vector3(0, 2, -6));
+                addArrow(pStart, wDir, 5, 0xffffff);
+                createLabel('W', '#fff').position.copy(pStart);
+            }
+
+            // 第 2 步：帆受到的空气动力 F_sail (牛顿第三定律)
+            let fSailMag = 0;
+            let fSailVec = new THREE.Vector3();
+            if (step >= 2) {
+                // F_sail = k * (W · N) * N
+                let dot = wDir.dot(nDir); 
+                if(dot < 0) {
+                    nDir.negate(); // 确保法线指向背风面
+                    dot = -dot;
+                }
+                fSailMag = windSpeed * dot * 1.5; // 视觉放大系数
+                fSailVec = nDir.clone().multiplyScalar(fSailMag);
+                
+                addArrow(forceCenter, nDir, fSailMag, 0xfacc15);
+                createLabel('F<sub>sail</sub>', '#facc15').position.copy(forceCenter.clone().add(fSailVec.clone().multiplyScalar(1.2)));
+                
+                // 画一条通过重心的帆面虚线辅助观察
+                let sDir = new THREE.Vector3(Math.sin(sailAngleGlobal), 0, -Math.cos(sailAngleGlobal));
+                addDashedLine(forceCenter.clone().add(sDir.clone().multiplyScalar(-8)), forceCenter.clone().add(sDir.clone().multiplyScalar(8)), 0xaaaaaa);
+            }
+
+            // 第 3 步：力的正交分解 (F_forward & F_side)
+            let fForwardVec = new THREE.Vector3();
+            let fSideVec = new THREE.Vector3();
+            if (step >= 3) {
+                // 纵向力 = F_sail 在船身方向 (bDir) 上的投影
+                let forwardMag = fSailVec.dot(bDir);
+                fForwardVec = bDir.clone().multiplyScalar(forwardMag);
+                
+                // 横向力
+                fSideVec = fSailVec.clone().sub(fForwardVec);
+
+                // 绘制分解
+                addArrow(forceCenter, bDir, forwardMag, 0xef4444);
+                addArrow(forceCenter, fSideVec.clone().normalize(), fSideVec.length(), 0xa855f7);
+                
+                createLabel('F<sub>forward</sub>', '#ef4444').position.copy(forceCenter.clone().add(fForwardVec.clone().multiplyScalar(1.2)));
+                createLabel('F<sub>side</sub>', '#a855f7').position.copy(forceCenter.clone().add(fSideVec.clone().multiplyScalar(1.2)));
+
+                // 绘制分解虚线框
+                addDashedLine(forceCenter.clone().add(fForwardVec), forceCenter.clone().add(fSailVec), 0xaaaaaa);
+                addDashedLine(forceCenter.clone().add(fSideVec), forceCenter.clone().add(fSailVec), 0xaaaaaa);
+            }
+
+            // 第 4 步：龙骨的抗漂移力 F_water (牛顿第三定律)
+            if (step >= 4) {
+                // 水对龙骨的力等大反向于 F_side
+                let fWaterVec = fSideVec.clone().negate();
+                addArrow(keelCenter, fWaterVec.clone().normalize(), fWaterVec.length(), 0x10b981);
+                createLabel('F<sub>water</sub>', '#10b981').position.copy(keelCenter.clone().add(fWaterVec.clone().multiplyScalar(1.2)));
+            }
+        }
+
+        // ================= 4. UI 交互与修复的核心代码段 =================
+        const btnNext = document.getElementById('btn-next');
+        const legend = document.getElementById('legend');
+
+        btnNext.addEventListener('click', () => {
+            step++;
+            if (step === 1) {
+                legend.style.display = 'block';
+                setActiveCard(1);
+                btnNext.innerText = "▶ 第二步：空气对帆的作用力 (牛三)";
+            } else if (step === 2) {
+                document.getElementById('leg-fsail').style.display = 'flex';
+                setActiveCard(2);
+                btnNext.innerText = "▶ 第三步：受力正交分解";
+            } else if (step === 3) {
+                document.getElementById('leg-decomp').style.display = 'flex';
+                document.getElementById('leg-decomp2').style.display = 'flex';
+                setActiveCard(3);
+                btnNext.innerText = "▶ 第四步：龙骨抗漂移 (牛三再现)";
+            } else if (step === 4) {
+                document.getElementById('leg-water').style.display = 'flex';
+                setActiveCard(4);
+                btnNext.innerText = "↻ 重置并修改参数观察";
+            } else {
+                step = 0;
+                legend.style.display = 'none';
+                ['leg-fsail','leg-decomp','leg-decomp2','leg-water'].forEach(id => document.getElementById(id).style.display='none');
+                setActiveCard(0);
+                btnNext.innerText = "▶ 第一步：风与帆的冲量交换";
+            }
+            updateVectors();
+        });
+
+        // 修复的滑块监听循环
+        ['boat-angle', 'sail-angle'].forEach(id => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                let val = parseFloat(e.target.value);
+                if (id === 'boat-angle') {
+                    alphaDeg = val;
+                    document.getElementById('val-boat').innerText = val + "°";
+                } else {
+                    betaDeg = val;
+                    document.getElementById('val-sail').innerText = val + "°";
+                }
+                updateVectors();
+            });
+        });
+
+        // ================= 5. 渲染循环 =================
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            
+            // 风的粒子流动动画（从 -Z 吹向 +Z）
+            windParticles.children.forEach(p => {
+                p.position.z += 0.5;
+                if(p.position.z > 40) p.position.z = -40;
+            });
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // 初始化并启动
+        updateVectors();
+        animate();
+
+        // ================= Xiao D 开发者专属：一键封面生成器 =================
+        window.addEventListener('keydown', function(e) {
+            // 按下键盘上的字母 'P' 键触发完美截图
+            if(e.key === 'p' || e.key === 'P') {
+                const canvas = document.querySelector('canvas');
+        
+                // 注意：为了让 Three.js 能被截图，你的 renderer 初始化时必须带上 preserveDrawingBuffer: true 
+                // 也就是：new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+
+                const dataURL = canvas.toDataURL('images/png');
+                const link = document.createElement('a');
+                link.download = 'cover_' + document.title + '.png'; // 自动以模型名字命名
+                link.href = dataURL;
+                link.click();
+        
+                // 弹出赛博提示
+                const hint = document.createElement('div');
+                hint.innerHTML = '📸 完美封面已截取！';
+                hint.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#00f2fe; color:#000; padding:10px 20px; border-radius:8px; font-        weight:bold; z-index:99999;';
+                document.body.appendChild(hint);
+                setTimeout(() => hint.remove(), 2000);
+            }
+        });
+    </script>
+</body>
+</html>

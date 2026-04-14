@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 角动量可视化物理引擎 (修复版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --bg: #050510;
+            --primary: #3b82f6;
+            --color-m: #ff3366; 
+            --color-v: #00ccff; 
+            --color-r: #10b981; 
+            --color-l: #facc15; 
+            --text: #f8fafc;
+        }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        /* 修复后的 3D 标签样式：去除了特殊矢量字符，采用标准加粗斜体 */
+        .label-3d { font-family: 'Times New Roman', Times, serif; font-style: italic; font-size: 20px; font-weight: bold; color: #ffffff; text-shadow: 2px 2px 4px rgba(0,0,0,0.9), -1px -1px 4px rgba(0,0,0,0.9); pointer-events: none; margin-top: -10px; margin-left: 10px; }
+        
+        .glass-panel { position: absolute; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 12px; z-index: 20; padding: 20px; box-sizing: border-box; pointer-events: auto; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 20; }
+
+        /* 左侧控制台 */
+        #controls-panel { top: 20px; left: 20px; width: 340px; }
+        h1 { margin: 0 0 15px 0; font-size: 18px; color: var(--primary); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; align-items: center; gap: 8px;}
+        .control-group { margin-bottom: 12px; }
+        label { font-size: 13px; color: #e2e8f0; display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: bold; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--primary); }
+        
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .data-box { background: rgba(0,0,0,0.4); border-left: 3px solid var(--primary); padding: 8px 12px; border-radius: 6px; }
+        .data-title { font-size: 11px; color: #94a3b8; text-transform: uppercase; }
+        .data-value { font-family: monospace; font-size: 16px; font-weight: bold; margin-top: 4px; }
+        
+        /* 矢量图例 */
+        .legend-box { margin-top: 15px; background: rgba(0,0,0,0.5); padding: 12px; border-radius: 6px; font-size: 12px; border-left: 3px solid var(--color-l); box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        .leg-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-weight: bold;}
+        .leg-color { width: 14px; height: 14px; border-radius: 3px; }
+
+        /* 右侧推导面板 */
+        #math-panel { top: 20px; right: 20px; width: 440px; max-height: calc(100vh - 40px); overflow-y: auto; padding-right: 10px; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+        
+        .math-card { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 15px; margin-bottom: 15px; transition: 0.4s; }
+        .math-card h2 { font-size: 16px; margin: 0 0 10px 0; color: #60a5fa; display: flex; align-items: center; gap: 8px; }
+        .math-text { font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+        .highlight { background: rgba(250, 204, 21, 0.15); border-left: 4px solid var(--color-l); padding: 10px; margin-top: 10px; font-size: 14px; border-radius: 0 6px 6px 0; color:#fef08a; font-weight: bold;}
+        
+        #hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 13px; color: rgba(255,255,255,0.8); pointer-events: none; background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 20px; font-weight: bold; border: 1px solid rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div id="controls-panel" class="glass-panel">
+            <h1>⚙️ 角动量参数控制台</h1>
+            
+            <div class="control-group">
+                <label style="color: var(--color-m);">质点质量 (m): <span id="val-m">2.0 kg</span></label>
+                <input type="range" id="m" min="0.5" max="5.0" value="2.0" step="0.1">
+            </div>
+            <div class="control-group">
+                <label style="color: var(--color-v);">切向速度 (v): <span id="val-v">5.0 m/s</span></label>
+                <input type="range" id="v" min="1.0" max="15.0" value="5.0" step="0.5">
+            </div>
+            <div class="control-group">
+                <label style="color: var(--color-r);">旋转半径 (r): <span id="val-r">8.0 m</span></label>
+                <input type="range" id="r" min="3.0" max="15.0" value="8.0" step="0.5">
+            </div>
+
+            <div class="data-grid">
+                <div class="data-box" style="border-color: #fff;">
+                    <div class="data-title">角速度 ω (转得有多快)</div>
+                    <div class="data-value" id="disp-w">0.63 rad/s</div>
+                </div>
+                <div class="data-box" style="border-color: var(--color-l); background: rgba(250, 204, 21, 0.1);">
+                    <div class="data-title" style="color: var(--color-l);">角动量 L (旋转破坏力)</div>
+                    <div class="data-value" id="disp-l" style="color: var(--color-l);">80.00 J·s</div>
+                </div>
+            </div>
+
+            <div id="vector-legend" class="legend-box">
+                <div style="font-weight:bold; margin-bottom:8px; color:var(--color-l);">3D 几何矢量说明：</div>
+                <div class="leg-item"><div class="leg-color" style="background:var(--color-r);"></div> 绿色向量 r：位矢 (旋转半径)</div>
+                <div class="leg-item"><div class="leg-color" style="background:var(--color-v);"></div> 蓝色向量 v：切向速度</div>
+                <div class="leg-item"><div class="leg-color" style="background:var(--color-m);"></div> 红色体积 m：质点质量</div>
+                <div class="leg-item"><div class="leg-color" style="background:var(--color-l); box-shadow: 0 0 8px var(--color-l);"></div> 金色光柱 L：角动量矢量</div>
+            </div>
+        </div>
+
+        <div id="math-panel" class="glass-panel">
+            <h1 style="margin-bottom: 20px; font-size: 20px; color: white;">📐 角动量：旋转的“动量”</h1>
+            
+            <div class="math-card">
+                <h2 style="color: #60a5fa;">1. 什么是角动量？</h2>
+                <div class="math-text">
+                    角动量（Angular Momentum）是描述物体**转动剧烈程度和规模**的物理量。<br>
+                    平动世界中，我们用动量 $\vec{p} = m\vec{v}$ 衡量让物体停下来的难度。在转动世界中，我们不仅要看质量和速度，还要看它**距离转轴有多远**。
+                </div>
+            </div>
+
+            <div class="math-card">
+                <h2 style="color: var(--color-l);">2. 叉乘与右手定则</h2>
+                <div class="math-text">
+                    角动量 $\vec{L}$ 是位矢 $\vec{r}$ 与动量 $\vec{p}$ 的**叉乘 (Cross Product)**：
+                    $$\vec{L} = \vec{r} \times \vec{p} = \vec{r} \times m\vec{v}$$
+                    <i>请观察 3D 模型：</i><br>
+                    伸出你的右手，四指从绿色 **r** 的方向弯向蓝色 **v** 的方向，你的大拇指所指的方向，就是金色角动量光柱 **L** 的方向（垂直于旋转平面）。
+                </div>
+            </div>
+
+            <div class="math-card">
+                <h2 style="color: #10b981;">3. 圆周运动中的角动量大小</h2>
+                <div class="math-text">
+                    因为在圆周运动中，半径 $\vec{r}$ 始终垂直于切向速度 $\vec{v}$，所以叉乘的标量大小可以极大地简化为：
+                    <div class="highlight">
+                        $$L = m \cdot v \cdot r$$
+                    </div>
+                </div>
+            </div>
+
+            <div class="math-card" style="border-color: #f43f5e; box-shadow: inset 0 0 20px rgba(244, 63, 94, 0.1);">
+                <h2 style="color: #f43f5e;">⚠️ 核心思维辨析：转得快 ≠ 破坏力大</h2>
+                <div class="math-text">
+                    我们在视觉上觉得“转得剧烈”，往往是指小球的**角速度 $\omega = v/r$** 很大。<br><br>
+                    <b>【课堂互动任务】：</b>请尝试保持质量 $m$ 和速度 $v$ 不变，<b>不断拉大半径 $r$ 的滑块</b>。<br>
+                    你会观察到一个极其违反直觉的现象：小球绕一圈需要的时间变长了，看起来转得“越来越慢了”；但是，代表角动量 $L$ 的金色光柱却<b>越来越高</b>！<br><br>
+                    因为对于旋转系统而言，质量分布得越远，杠杆效应就越明显，系统蕴含的“旋转冲击力”就越庞大。
+                </div>
+            </div>
+        </div>
+        
+        <div id="hint">🖱️ 提示：按住鼠标左键可 360° 旋转视角，滚轮可缩放空间</div>
+    </div>
+
+    <script>
+        // ================= 1. Three.js 与 CSS2DRenderer 初始化 =================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050510, 0.01);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 20, 45); // 俯视视角
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none'; 
+        container.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; 
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, 5, 0); 
+        controls.maxDistance = 100;
+        controls.minDistance = 5;
+
+        // 光影设置
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); 
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 30, 15);
+        scene.add(dirLight);
+
+        // 中心转轴与网格
+        const gridHelper = new THREE.GridHelper(80, 40, 0x334155, 0x1e293b);
+        scene.add(gridHelper);
+
+        const axisGeo = new THREE.CylinderGeometry(0.2, 0.2, 40, 16);
+        const axisMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+        const centralAxis = new THREE.Mesh(axisGeo, axisMat);
+        scene.add(centralAxis);
+
+        // ================= 2. 物理实体与矢量构建 =================
+        const particleMat = new THREE.MeshPhongMaterial({ color: 0xff3366, emissive: 0x440011, shininess: 100 }); 
+        const particleGeo = new THREE.SphereGeometry(1, 32, 32);
+        const particle = new THREE.Mesh(particleGeo, particleMat);
+        scene.add(particle);
+
+        // 轨迹尾巴
+        let trail = [];
+        const trailMat = new THREE.LineBasicMaterial({color: 0xff3366, transparent: true, opacity: 0.5});
+        const trailLine = new THREE.Line(new THREE.BufferGeometry(), trailMat);
+        scene.add(trailLine);
+
+        // 矢量箭头组
+        const vectorGroup = new THREE.Group();
+        scene.add(vectorGroup);
+
+        function addArrow(origin, dirVec, length, color, headWidth=0.8, headLength=1.5) {
+            if (length < 0.01) return null;
+            let arrow = new THREE.ArrowHelper(dirVec.clone().normalize(), origin, length, color, headLength, headWidth);
+            vectorGroup.add(arrow);
+            return arrow;
+        }
+
+        // 修复乱码：去除组合箭头，改用纯加粗斜体字母表示向量
+        function createLabel(text, color) {
+            const div = document.createElement('div');
+            div.className = 'label-3d';
+            div.innerHTML = text; 
+            div.style.color = color;
+            const label = new THREE.CSS2DObject(div);
+            vectorGroup.add(label);
+            return label;
+        }
+
+        const label_r = createLabel('<i><b>r</b></i>', '#10b981');
+        const label_v = createLabel('<i><b>v</b></i>', '#00ccff');
+        const label_L = createLabel('<i><b>L</b></i>', '#facc15');
+
+        // 发光柱体模拟庞大的 L 矢量
+        const L_beamGeo = new THREE.CylinderGeometry(0.4, 0.4, 1, 16);
+        L_beamGeo.translate(0, 0.5, 0); 
+        const L_beamMat = new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+        const L_beam = new THREE.Mesh(L_beamGeo, L_beamMat);
+        scene.add(L_beam);
+
+        // ================= 3. 物理状态控制 =================
+        let m = 2.0;
+        let v = 5.0;
+        let r = 8.0;
+        let theta = 0; 
+
+        // 视觉缩放系数映射
+        const SCALE_V = 0.5; 
+        const SCALE_L = 0.15; 
+        
+        function updatePhysicsAndVisuals() {
+            let omega = v / r;      
+            let L_val = m * v * r;  
+
+            document.getElementById('disp-w').innerText = omega.toFixed(2) + " rad/s";
+            document.getElementById('disp-l').innerText = L_val.toFixed(2) + " J·s";
+
+            let radiusVis = Math.pow(m, 1/3); 
+            particle.scale.setScalar(radiusVis);
+            
+            vectorGroup.children = vectorGroup.children.filter(c => c.isCSS2DObject);
+
+            let pPos = new THREE.Vector3(r * Math.cos(theta), 0, r * Math.sin(theta));
+            particle.position.copy(pPos);
+
+            let rDir = pPos.clone().normalize();
+            addArrow(new THREE.Vector3(0,0,0), rDir, r, 0x10b981, 0.5, 1.0);
+            label_r.position.copy(pPos.clone().multiplyScalar(0.5)); 
+
+            let vDir = new THREE.Vector3(-Math.sin(theta), 0, Math.cos(theta));
+            let vLen = v * SCALE_V;
+            addArrow(pPos, vDir, vLen, 0x00ccff, 0.6, 1.2);
+            label_v.position.copy(pPos.clone().add(vDir.clone().multiplyScalar(vLen + 1.5)));
+
+            let lHeight = L_val * SCALE_L;
+            L_beam.scale.set(1, lHeight, 1);
+            
+            if(lHeight > 0) {
+                addArrow(new THREE.Vector3(0, lHeight, 0), new THREE.Vector3(0,1,0), 2.0, 0xfacc15, 1.2, 2.0);
+            }
+            label_L.position.set(0, lHeight + 3, 0);
+            
+            trail.push(pPos.clone());
+            if(trail.length > 100) trail.shift();
+            trailLine.geometry.setFromPoints(trail);
+        }
+
+        // ================= 4. 事件监听 =================
+        ['m', 'v', 'r'].forEach(id => {
+            document.getElementById(id).addEventListener('input', (ev) => {
+                let val = parseFloat(ev.target.value);
+                let unit = id === 'm' ? ' kg' : (id === 'v' ? ' m/s' : ' m');
+                document.getElementById('val-'+id).innerText = val.toFixed(1) + unit;
+                
+                m = parseFloat(document.getElementById('m').value);
+                v = parseFloat(document.getElementById('v').value);
+                r = parseFloat(document.getElementById('r').value);
+                
+                if(id === 'r') trail = [];
+            });
+        });
+
+        // ================= 5. 渲染与运动主循环 =================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); 
+            
+            let dt = clock.getDelta();
+            if (dt > 0.1) dt = 0.1;
+
+            let omega = v / r;
+            theta += omega * dt;
+
+            updatePhysicsAndVisuals();
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        updatePhysicsAndVisuals();
+        animate();
+
+        // ================= Xiao D 开发者专属：一键封面生成器 =================
+        window.addEventListener('keydown', function(e) {
+            // 按下键盘上的字母 'P' 键触发完美截图
+            if(e.key === 'p' || e.key === 'P') {
+                const canvas = document.querySelector('canvas');
+        
+                // 注意：为了让 Three.js 能被截图，你的 renderer 初始化时必须带上 preserveDrawingBuffer: true 
+                // 也就是：new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+
+                const dataURL = canvas.toDataURL('images/png');
+                const link = document.createElement('a');
+                link.download = 'cover_' + document.title + '.png'; // 自动以模型名字命名
+                link.href = dataURL;
+                link.click();
+        
+                // 弹出赛博提示
+                const hint = document.createElement('div');
+                hint.innerHTML = '📸 完美封面已截取！';
+                hint.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#00f2fe; color:#000; padding:10px 20px; border-radius:8px; font-        weight:bold; z-index:99999;';
+                document.body.appendChild(hint);
+                setTimeout(() => hint.remove(), 2000);
+            }
+        });
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>流星锤恒定扭矩刹车测试台</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: rgba(15, 23, 42, 0.85);
+            --primary: #3b82f6;
+            --danger: #ef4444;
+            --success: #10b981;
+            --text: #f8fafc;
+            --l-color: #facc15;
+        }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; }
+        
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        canvas { display: block; }
+
+        .glass-panel { position: absolute; top: 20px; left: 20px; width: 360px; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 12px; z-index: 10; padding: 20px; box-sizing: border-box; }
+        
+        h1 { margin: 0 0 15px 0; font-size: 18px; color: var(--primary); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; align-items: center; gap: 8px;}
+        
+        .control-group { margin-bottom: 15px; }
+        label { font-size: 13px; color: #cbd5e1; display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: bold; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--primary); }
+        input[type=range]:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        button { flex: 1; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        button:hover:not(:disabled) { transform: translateY(-2px); }
+        button:disabled { background: #475569 !important; cursor: not-allowed; box-shadow: none; transform: none; opacity: 0.8; }
+        
+        #btn-brake { background: var(--danger); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
+        #btn-brake:hover:not(:disabled) { background: #dc2626; box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6); }
+        #btn-reset { background: #475569; }
+        #btn-reset:hover:not(:disabled) { background: #64748b; }
+
+        /* 数据大屏 */
+        .dashboard { margin-top: 20px; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 15px; border: 1px solid rgba(255,255,255,0.05); }
+        .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed rgba(255,255,255,0.1); }
+        .data-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+        .data-label { font-size: 13px; color: #94a3b8; }
+        .data-val { font-family: monospace; font-size: 18px; font-weight: bold; }
+        
+        .highlight-l { color: var(--l-color); text-shadow: 0 0 8px rgba(250, 204, 21, 0.5); }
+        .timer { color: var(--success); font-size: 24px !important; text-shadow: 0 0 10px rgba(16, 185, 129, 0.5); }
+
+        /* 结论提示框 */
+        #conclusion-box { margin-top: 15px; padding: 12px; background: rgba(250, 204, 21, 0.1); border-left: 4px solid var(--l-color); border-radius: 4px; font-size: 13px; line-height: 1.5; color: #fef08a; display: none; }
+
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <div class="glass-panel">
+        <h1>🛑 恒定扭矩刹车测试台</h1>
+        
+        <div style="font-size: 12px; color: #94a3b8; margin-bottom: 15px; line-height: 1.5;">
+            <b>实验目的：</b>验证在中心转轴施加恒定阻力矩 (τ = 20 N·m) 的情况下，系统完全停下所需的时间，与系统的角动量 L 严格成正比。
+        </div>
+
+        <div class="control-group">
+            <label style="color: #ff3366;">质量 (m): <span id="val-m">2.0 kg</span></label>
+            <input type="range" id="slider-m" min="1" max="10" value="2" step="0.5">
+        </div>
+        <div class="control-group">
+            <label style="color: #00ccff;">初速度 (v): <span id="val-v">5.0 m/s</span></label>
+            <input type="range" id="slider-v" min="1" max="15" value="5" step="0.5">
+        </div>
+        <div class="control-group">
+            <label style="color: #10b981;">半径 (r): <span id="val-r">5.0 m</span></label>
+            <input type="range" id="slider-r" min="2" max="10" value="5" step="0.5">
+        </div>
+
+        <div class="btn-group">
+            <button id="btn-brake">踩下刹车 (τ=20)</button>
+            <button id="btn-reset">重置实验</button>
+        </div>
+
+        <div class="dashboard">
+            <div class="data-row">
+                <span class="data-label">初始角动量 (L = mvr)</span>
+                <span class="data-val highlight-l" id="disp-l">50.00 J·s</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">当前角速度 (ω)</span>
+                <span class="data-val" id="disp-w" style="color: #fff;">1.00 rad/s</span>
+            </div>
+            <div class="data-row" style="margin-top: 10px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
+                <span class="data-label" style="color: var(--success); font-weight: bold;">刹车用时计时器</span>
+                <span class="data-val timer" id="disp-time">0.00 s</span>
+            </div>
+        </div>
+
+        <div id="conclusion-box">
+            <b>实验结论：</b><br>
+            根据角动量定理 $\tau \cdot t = L$，理论刹车时间应为 <span id="theory-time" style="font-weight:bold; font-family:monospace;">--</span> s。<br>
+            不论你增加质量、速度还是拉长绳子，只要角动量 L 翻倍，刹车时间必将严格翻倍！这就是旋转的“惯性”。
+        </div>
+    </div>
+
+    <script>
+        // ================= 1. Canvas 与基础设置 =================
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height, centerX, centerY;
+        const PX_PER_METER = 35; // 像素与物理米的比例
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2 + 150; // 稍微向右偏移，避开UI面板
+            centerY = height / 2;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // ================= 2. 物理状态与变量 =================
+        const TAU_BRAKE = 20.0; // 恒定阻力矩 20 N·m
+        
+        let m = 2.0;
+        let v_init = 5.0;
+        let r = 5.0;
+        
+        let theta = 0;
+        let omega = 0;
+        let L_init = 0;
+        
+        // 状态机: 'orbit' (正常环绕), 'braking' (刹车中), 'stopped' (已停止)
+        let state = 'orbit'; 
+        let brakeTime = 0;
+        let sparks = []; // 刹车火花粒子系统
+
+        // UI 元素
+        const s_m = document.getElementById('slider-m');
+        const s_v = document.getElementById('slider-v');
+        const s_r = document.getElementById('slider-r');
+        const btnBrake = document.getElementById('btn-brake');
+        const btnReset = document.getElementById('btn-reset');
+        const dispL = document.getElementById('disp-l');
+        const dispW = document.getElementById('disp-w');
+        const dispTime = document.getElementById('disp-time');
+        const conclusionBox = document.getElementById('conclusion-box');
+        const theoryTimeDisp = document.getElementById('theory-time');
+
+        // ================= 3. 核心逻辑函数 =================
+        function updateTheory() {
+            L_init = m * v_init * r;
+            omega = v_init / r;
+            dispL.innerText = L_init.toFixed(2) + " J·s";
+            dispW.innerText = omega.toFixed(2) + " rad/s";
+            
+            let t_theory = L_init / TAU_BRAKE;
+            theoryTimeDisp.innerText = t_theory.toFixed(2);
+        }
+
+        function resetSim() {
+            state = 'orbit';
+            brakeTime = 0;
+            theta = 0;
+            sparks = [];
+            
+            m = parseFloat(s_m.value);
+            v_init = parseFloat(s_v.value);
+            r = parseFloat(s_r.value);
+            
+            updateTheory();
+            
+            // 恢复UI状态
+            s_m.disabled = false;
+            s_v.disabled = false;
+            s_r.disabled = false;
+            btnBrake.disabled = false;
+            dispTime.innerText = "0.00 s";
+            dispTime.style.color = "var(--success)";
+            conclusionBox.style.display = "none";
+        }
+
+        // 滑块实时监听
+        [s_m, s_v, s_r].forEach(slider => {
+            slider.addEventListener('input', (e) => {
+                let id = e.target.id.split('-')[1];
+                let val = parseFloat(e.target.value).toFixed(1);
+                let unit = id === 'm' ? ' kg' : (id === 'v' ? ' m/s' : ' m');
+                document.getElementById(`val-${id}`).innerText = val + unit;
+                resetSim(); // 拖动滑块直接重置实验
+            });
+        });
+
+        // 刹车按钮
+        btnBrake.addEventListener('click', () => {
+            if (state === 'orbit') {
+                state = 'braking';
+                s_m.disabled = true;
+                s_v.disabled = true;
+                s_r.disabled = true;
+                btnBrake.disabled = true;
+                dispTime.style.color = "#ef4444"; // 变红表示计时中
+            }
+        });
+
+        btnReset.addEventListener('click', resetSim);
+
+        // ================= 4. 火花粒子系统 (模拟摩擦发热) =================
+        class Spark {
+            constructor() {
+                this.angle = Math.random() * Math.PI * 2;
+                this.dist = Math.random() * 5 + 5; // 在转轴中心附近生成
+                this.x = centerX + Math.cos(this.angle) * this.dist;
+                this.y = centerY + Math.sin(this.angle) * this.dist;
+                // 沿着切线方向稍微向外飞出
+                let speed = Math.random() * 2 + 1;
+                this.vx = -Math.sin(this.angle) * speed * Math.sign(omega) + (Math.random()-0.5)*2;
+                this.vy = Math.cos(this.angle) * speed * Math.sign(omega) + (Math.random()-0.5)*2;
+                this.life = 1.0;
+                this.decay = Math.random() * 0.05 + 0.02;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+            }
+            draw(ctx) {
+                ctx.fillStyle = `rgba(255, 100, 0, ${this.life})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2, 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+
+        // ================= 5. 渲染与物理主循环 =================
+        let lastTime = performance.now();
+
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+            let dt = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+            if (dt > 0.1) dt = 0.1; // 防止切屏时间跳跃
+
+            // 绘制带有半透明拖影的背景
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.2)'; // 拖影效果
+            ctx.fillRect(0, 0, width, height);
+
+            // 物理积分
+            if (state === 'orbit') {
+                theta += omega * dt;
+            } 
+            else if (state === 'braking') {
+                // 计算角加速度: alpha = Tau / I = Tau / (m * r^2)
+                let I = m * r * r;
+                let alpha = TAU_BRAKE / I;
+                
+                omega -= alpha * dt; // 减速
+                theta += omega * dt;
+                brakeTime += dt;
+                
+                dispTime.innerText = brakeTime.toFixed(2) + " s";
+                dispW.innerText = Math.max(0, omega).toFixed(2) + " rad/s";
+                
+                // 产生火花
+                for(let i=0; i<3; i++) sparks.push(new Spark());
+
+                if (omega <= 0) {
+                    omega = 0;
+                    state = 'stopped';
+                    conclusionBox.style.display = "block"; // 显示结论
+                    dispTime.style.color = "var(--success)"; // 停止后变绿
+                }
+            }
+
+            // 绘制中心刹车轴
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
+            if (state === 'braking') {
+                ctx.fillStyle = '#ef4444'; // 刹车时轴变红发热
+                ctx.shadowColor = '#ef4444';
+                ctx.shadowBlur = 20;
+            } else {
+                ctx.fillStyle = '#475569';
+                ctx.shadowBlur = 0;
+            }
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // 更新并绘制火花
+            if(state === 'braking' || sparks.length > 0) {
+                for (let i = sparks.length - 1; i >= 0; i--) {
+                    let s = sparks[i];
+                    s.update();
+                    s.draw(ctx);
+                    if (s.life <= 0) sparks.splice(i, 1);
+                }
+            }
+
+            // 绘制绳子 (Tether)
+            let pxR = r * PX_PER_METER;
+            let ballX = centerX + Math.cos(theta) * pxR;
+            let ballY = centerY + Math.sin(theta) * pxR;
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(ballX, ballY);
+            ctx.stroke();
+
+            // 绘制质量小球 (视觉半径与质量的正相关映射)
+            let visualRadius = 10 + Math.pow(m, 0.6) * 5; 
+            ctx.fillStyle = '#ff3366';
+            ctx.beginPath();
+            ctx.arc(ballX, ballY, visualRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 小球高光
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.beginPath();
+            ctx.arc(ballX - visualRadius*0.3, ballY - visualRadius*0.3, visualRadius*0.3, 0, Math.PI*2);
+            ctx.fill();
+
+            // 如果正在旋转，绘制切向速度矢量箭头
+            if (omega > 0) {
+                let vLength = (omega * r) * 10; // 视觉长度比例
+                let dirX = -Math.sin(theta);
+                let dirY = Math.cos(theta);
+                
+                ctx.strokeStyle = '#00ccff';
+                ctx.fillStyle = '#00ccff';
+                ctx.lineWidth = 3;
+                drawArrow(ctx, ballX, ballY, ballX + dirX * vLength, ballY + dirY * vLength);
+            }
+        }
+
+        // 辅助绘制箭头函数
+        function drawArrow(ctx, fromx, fromy, tox, toy) {
+            const headlen = 10; 
+            const dx = tox - fromx;
+            const dy = toy - fromy;
+            const angle = Math.atan2(dy, dx);
+            ctx.beginPath();
+            ctx.moveTo(fromx, fromy);
+            ctx.lineTo(tox, toy);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(tox, toy);
+            ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.lineTo(tox, toy);
+            ctx.fill();
+        }
+
+        resetSim();
+        requestAnimationFrame(animate);
+
+        // ================= Xiao D 开发者专属：一键封面生成器 =================
+        window.addEventListener('keydown', function(e) {
+            // 按下键盘上的字母 'P' 键触发完美截图
+            if(e.key === 'p' || e.key === 'P') {
+                const canvas = document.querySelector('canvas');
+        
+                // 注意：为了让 Three.js 能被截图，你的 renderer 初始化时必须带上 preserveDrawingBuffer: true 
+                // 也就是：new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+
+                const dataURL = canvas.toDataURL('images/png');
+                const link = document.createElement('a');
+                link.download = 'cover_' + document.title + '.png'; // 自动以模型名字命名
+                link.href = dataURL;
+                link.click();
+        
+                // 弹出赛博提示
+                const hint = document.createElement('div');
+                hint.innerHTML = '📸 完美封面已截取！';
+                hint.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#00f2fe; color:#000; padding:10px 20px; border-radius:8px; font-        weight:bold; z-index:99999;';
+                document.body.appendChild(hint);
+                setTimeout(() => hint.remove(), 2000);
+            }
+        });
+
+    </script>
+</body>
+</html>
