@@ -84,74 +84,16 @@ button.menu-btn:hover { background:#08306b; color:white; transform:translateY(-6
 .back-btn:hover { background:#333; }
 .page { display:none; flex-direction:column; align-items:center; justify-content:center; flex:1; width:100%; text-align:center; padding-bottom:40px; }
 
-/* ================= 仿真引擎按钮网格排版 (上图下文卡片式) ================= */
-.btn-group { 
-    display: grid; 
-    grid-template-columns: repeat(4, 1fr); 
-    gap: 25px; 
-    max-width: 1150px; 
-    width: 100%;
-    margin: 0 auto 20px auto; 
-    padding: 0 20px;
-    box-sizing: border-box;
-}
+/* 仿真按钮展示样式 */
+.external-btn { background: linear-gradient(145deg, #08306b, #005c97); color: white; width: 100%; height: 180px; font-size: 16px; border-radius: 12px; border: 1px solid rgba(0, 242, 254, 0.2); cursor: pointer; transition: all 0.3s; box-shadow: 0 6px 15px rgba(0,0,0,0.2); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 0; overflow: hidden; }
+.external-btn:hover { background: linear-gradient(145deg, #0a408b, #0075c4); transform: translateY(-5px); box-shadow: 0 12px 25px rgba(0, 242, 254, 0.3); border-color: rgba(0, 242, 254, 0.6); }
 
-.external-btn { 
-    background: linear-gradient(145deg, #08306b, #005c97); 
-    color: white; 
-    width: 100%; 
-    height: 180px; 
-    font-size: 16px; 
-    border-radius: 12px; 
-    border: 1px solid rgba(0, 242, 254, 0.2); 
-    cursor: pointer; 
-    transition: all 0.3s; 
-    box-shadow: 0 6px 15px rgba(0,0,0,0.2); 
-    display: flex; 
-    flex-direction: column; 
-    align-items: center; 
-    justify-content: flex-start; 
-    padding: 0; 
-    overflow: hidden; 
-}
-.external-btn:hover { 
-    background: linear-gradient(145deg, #0a408b, #0075c4); 
-    transform: translateY(-5px); 
-    box-shadow: 0 12px 25px rgba(0, 242, 254, 0.3);
-    border-color: rgba(0, 242, 254, 0.6);
-}
+.btn-group { display: grid; grid-template-columns: repeat(4, 1fr); gap: 25px; max-width: 1150px; width: 100%; margin: 0 auto 20px auto; padding: 0 20px; box-sizing: border-box; }
+.btn-cover { width: 100%; height: 100px; background-color: #ffffff; background-size: cover; background-position: center; border-bottom: 2px solid rgba(0, 242, 254, 0.3); transition: 0.3s; }
+.external-btn:hover .btn-cover { filter: brightness(1.1) contrast(1.1); }
 
-/* 按钮内的封面图区域：修改为未找到图片时显示纯白板 */
-.btn-cover {
-    width: 100%;
-    height: 100px;
-    background-color: #ffffff; /* 找不到图片时显示白板 */
-    background-size: cover;
-    background-position: center;
-    border-bottom: 2px solid rgba(0, 242, 254, 0.3);
-    transition: 0.3s;
-}
-.external-btn:hover .btn-cover {
-    filter: brightness(1.1) contrast(1.1);
-}
-
-.btn-info {
-    flex: 1;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 8px;
-    box-sizing: border-box;
-    line-height: 1.3;
-}
-.btn-info span {
-    font-size: 12px !important;
-    font-weight: normal;
-    margin-top: 4px;
-    color: #aed9e0;
-}
+.btn-info { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px; box-sizing: border-box; line-height: 1.3; }
+.btn-info span { font-size: 12px !important; font-weight: normal; margin-top: 4px; color: #aed9e0; }
 
 .ppt-frame { width: 100%; height: calc(100vh - 120px); border: none; border-radius: 8px; }
 
@@ -164,7 +106,7 @@ button.menu-btn:hover { background:#08306b; color:white; transform:translateY(-6
 .video-player-container { display: none; padding: 15px; background: #fff; border-top: 1px solid #dee2e6; }
 .video-player { width: 100%; border-radius: 6px; background: #000; outline: none; }
 
-/* 全屏原窗口展示引擎 */
+/* 全屏原窗口展示引擎 (图谱与仿真) */
 .fullscreen-overlay { display: none; flex-direction: column; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; z-index: 9999; }
 .overlay-header { height: 50px; background: #08306b; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
 .overlay-title { color: #fff; font-size: 18px; font-weight: bold; letter-spacing: 1px; }
@@ -175,13 +117,21 @@ button.menu-btn:hover { background:#08306b; color:white; transform:translateY(-6
 </style>
 
 <script>
+// ================= 思维导图联动映射表 (包含全学科) =================
 const mindmapMapping = {
     'home':[],
     'mechanics':['node-part1'],
     'kinematics':['node-part1', 'node-ch1'],
     'kinematicsSimulation': ['node-part1', 'node-ch1'],
     'dynamics': ['node-part1', 'node-ch2'],
-    'dynamicsSimulation': ['node-part1', 'node-ch2']
+    'dynamicsSimulation': ['node-part1', 'node-ch2'],
+    'rigidBody': ['node-part1', 'node-ch3'],
+    'vibrationWave': ['node-part1', 'node-ch5'],
+    'thermoPart': ['node-part2'],
+    'gasTheory': ['node-part2', 'node-ch6'],
+    'thermoBase': ['node-part2', 'node-ch7'],
+    'electroPart': ['node-part3'],
+    'opticsPart': ['node-part4']
 };
 
 function updateMindmapHighlight(pageId) {
@@ -208,10 +158,12 @@ function showPage(id) {
 function goHome() { showPage("home"); }
 function goBack(parentId) { showPage(parentId); }
 
+// ====================== 核心功能：原窗口沉浸式 Iframe 渲染 ======================
 function openInCurrentWindow(title, url) {
     const overlay = document.getElementById('fullscreenOverlay');
     const iframe = document.getElementById('overlayIframe');
     const titleEl = document.getElementById('overlayTitle');
+    
     titleEl.textContent = title;
     iframe.src = encodeURI(url); 
     overlay.style.display = 'flex';
@@ -224,15 +176,12 @@ function closeOverlay() {
     iframe.src = ''; 
 }
 
-function open3dTrajectorySimulation() { window.open('3d_kinematics.html', '_blank', 'width=1200,height=800'); }
-function open3dKinematicsSimulation() { window.open('physics_3d_kinematics.html', '_blank', 'width=1200,height=800'); }
-function openWindSpeedSimulation() { window.open('wind_speed_simulation.html', '_blank', 'width=1200,height=800'); }
-function openGalileoTransformSimulation() { window.open('relative_movement.html', '_blank', 'width=1200,height=800'); }
-
+// ====================== 右侧面板核心功能 (视频与课件) ======================
 function openSidebarPanel(type) {
     const panel = document.getElementById('sidebarPanel');
     const panelBody = document.getElementById('panelBody');
     const panelTitle = document.getElementById('panelTitle');
+    
     panelBody.innerHTML = ''; 
     
     if (type === 'ppt') {
@@ -268,6 +217,7 @@ function openSidebarPanel(type) {
         ];
         buildVideoList(videoData, panelBody);
     }
+    
     panel.classList.add('open');
 }
 
@@ -338,18 +288,26 @@ document.addEventListener('click', function(e) {
             <ul>
                 <li class="tree-node node-chapter" id="node-ch1" onclick="showPage('kinematics')">第1章 运动学</li>
                 <li class="tree-node node-chapter" id="node-ch2" onclick="showPage('dynamics')">第2章 质点（系）动力学</li>
-                <li class="tree-node node-chapter" onclick="alert('刚体动力学模块待完善')">第3章 刚体动力学</li>
-                <li class="tree-node node-chapter" onclick="alert('机械振动与波模块待完善')">第5章 机械振动和机械波</li>
+                <li class="tree-node node-chapter" id="node-ch3" onclick="showPage('rigidBody')">第3章 刚体动力学</li>
+                <li class="tree-node node-chapter" id="node-ch5" onclick="showPage('vibrationWave')">第5章 机械振动和机械波</li>
             </ul>
-            <li class="tree-node node-part" id="node-part2" onclick="alert('气体动理论和热力学基础模块待完善')">第二篇 气体动理论和热力学基础</li>
+            <li class="tree-node node-part" id="node-part2" onclick="showPage('thermoPart')">第二篇 气体动理论和热力学基础</li>
             <ul>
-                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第6章 气体动理论基础</li>
-                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第7章 热力学基础</li>
+                <li class="tree-node node-chapter" id="node-ch6" onclick="showPage('gasTheory')">第6章 气体动理论基础</li>
+                <li class="tree-node node-chapter" id="node-ch7" onclick="showPage('thermoBase')">第7章 热力学基础</li>
             </ul>
-            <li class="tree-node node-part" id="node-part3" onclick="alert('电磁学模块待完善')">第三篇 电磁学</li>
+            <li class="tree-node node-part" id="node-part3" onclick="showPage('electroPart')">第三篇 电磁学</li>
             <ul>
-                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第8章 真空中的静电场</li>
-                <li class="tree-node node-chapter" onclick="alert('模块待完善')">第10章 恒定电流和恒定磁场</li>
+                <li class="tree-node node-chapter" id="node-ch8" onclick="alert('模块待完善')">第8章 真空中的静电场</li>
+                <li class="tree-node node-chapter" id="node-ch9" onclick="alert('模块待完善')">第9章 静电场中的导体</li>
+                <li class="tree-node node-chapter" id="node-ch10" onclick="alert('模块待完善')">第10章 恒定电流和恒定磁场</li>
+                <li class="tree-node node-chapter" id="node-ch12" onclick="alert('模块待完善')">第12章 电磁感应</li>
+            </ul>
+            <li class="tree-node node-part" id="node-part4" onclick="showPage('opticsPart')">第四篇 光学</li>
+            <ul>
+                <li class="tree-node node-chapter" id="node-ch14" onclick="alert('模块待完善')">第14章 光的干涉</li>
+                <li class="tree-node node-chapter" id="node-ch15" onclick="alert('模块待完善')">第15章 光的衍射</li>
+                <li class="tree-node node-chapter" id="node-ch16" onclick="alert('模块待完善')">第16章 光的偏振</li>
             </ul>
         </ul>
     </div>
@@ -374,9 +332,9 @@ document.addEventListener('click', function(e) {
             <div class="title">大学物理教学与自主学习平台</div>
             <div class="main-menu">
                 <button class="menu-btn" onclick="showPage('mechanics')">力学</button>
-                <button class="menu-btn" onclick="alert('气体动理论和热力学基础模块待完善')">气体动理论<br>和热力学基础</button>
-                <button class="menu-btn" onclick="alert('电磁学模块待完善')">电磁学</button>
-                <button class="menu-btn" onclick="alert('光学模块待完善')">光学</button>
+                <button class="menu-btn" onclick="showPage('thermoPart')">气体动理论<br>和热力学基础</button>
+                <button class="menu-btn" onclick="showPage('electroPart')">电磁学</button>
+                <button class="menu-btn" onclick="showPage('opticsPart')">光学</button>
             </div>
         </div>
     </div>
@@ -387,8 +345,8 @@ document.addEventListener('click', function(e) {
             <div class="sub-menu">
                 <button class="menu-btn" onclick="showPage('kinematics')">第1章 运动学</button>
                 <button class="menu-btn" onclick="showPage('dynamics')">第2章 质点（系）动力学</button>
-                <button class="menu-btn" onclick="alert('刚体动力学模块待完善')">第3章 刚体动力学</button>
-                <button class="menu-btn" onclick="alert('机械振动与波模块待完善')">第5章 机械振动和机械波</button>
+                <button class="menu-btn" onclick="showPage('rigidBody')">第3章 刚体动力学</button>
+                <button class="menu-btn" onclick="showPage('vibrationWave')">第5章 机械振动和机械波</button>
             </div>
             <button class="back-btn" onclick="goHome()">返回首页</button>
         </div>
@@ -411,19 +369,19 @@ document.addEventListener('click', function(e) {
         <div class="center-container" style="justify-content: flex-start; margin-top: 80px;">
             <div class="title" style="margin-bottom: 30px;">运动学物理引擎推演库</div>
             <div class="btn-group">
-                <button class="external-btn" onclick="open3dTrajectorySimulation()">
+                <button class="external-btn" onclick="openInCurrentWindow('三维曲线运动仿真', '3d_kinematics.html')">
                     <div class="btn-cover" style="background-image: url('images/cover_三维曲线运动仿真.png');"></div>
                     <div class="btn-info">三维曲线运动仿真<br><span>(位矢 / 位移 / 路程)</span></div>
                 </button>
-                <button class="external-btn" onclick="open3dKinematicsSimulation()">
+                <button class="external-btn" onclick="openInCurrentWindow('三维速度加速度模型', 'physics_3d_kinematics.html')">
                     <div class="btn-cover" style="background-image: url('images/cover_三维速度加速度模型.png');"></div>
                     <div class="btn-info">三维曲线运动仿真<br><span>(速度 / 速率 / 加速度)</span></div>
                 </button>
-                <button class="external-btn" onclick="openWindSpeedSimulation()">
+                <button class="external-btn" onclick="openInCurrentWindow('相对运动风速合成', 'wind_speed_simulation.html')">
                     <div class="btn-cover" style="background-image: url('images/cover_相对运动仿真.png');"></div>
                     <div class="btn-info">相对运动仿真<br><span>(风速矢量合成推演)</span></div>
                 </button>
-                <button class="external-btn" onclick="openGalileoTransformSimulation()">
+                <button class="external-btn" onclick="openInCurrentWindow('伽利略坐标变换', 'relative_movement.html')">
                     <div class="btn-cover" style="background-image: url('images/cover_伽利略坐标变换.png');"></div>
                     <div class="btn-info">伽利略坐标变换<br><span>(坐标与位矢动态推演)</span></div>
                 </button>
@@ -514,7 +472,7 @@ document.addEventListener('click', function(e) {
                     <div class="btn-info">炮弹炮车动量分析<br><span>(相对速度系统模型)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('3D 角动量可视化物理引擎 (修复版)', 'Angular_Momentum.html')">
-                    <div class="btn-cover" style="background-image: url('images/cover_3D 角动量可视化物理引擎 (修复版).png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_3D_角动量可视化物理引擎__修复版.png');"></div>
                     <div class="btn-info">角动量 3D 可视化<br><span>(叉乘与空间矢量概念)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('流星锤恒定扭矩刹车测试台', '恒定扭矩刹车测试台.html')">
@@ -522,15 +480,103 @@ document.addEventListener('click', function(e) {
                     <div class="btn-info">恒定扭矩刹车测试<br><span>(角动量与阻力矩守恒)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('3D 二维斜碰与约束可视化分析台 (几何溯源详尽版)', 'Oblique_Collision.html')">
-                    <div class="btn-cover" style="background-image: url('images/cover_3D 二维斜碰与约束可视化分析台 (几何溯源详尽版).png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_3D 二维斜碰与约束可视化分析台_几何溯源详尽版.png');"></div>
                     <div class="btn-info">二维斜碰与约束<br><span>(切向动量守恒分析)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('3D 冲击摆碰撞实验室：分步推导版', 'Collision_Pendulum.html')">
-                    <div class="btn-cover" style="background-image: url('images/cover_3D 冲击摆碰撞实验室：分步推导版.png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_3D 冲击摆碰撞实验室_分步推导版.png');"></div>
                     <div class="btn-info">冲击摆物理实验室<br><span>(完全非弹性碰撞与机械能)</span></div>
                 </button>
             </div>
             <button class="back-btn" onclick="goBack('dynamics')">返回上一级</button>
+        </div>
+    </div>
+
+    <div id="rigidBody" class="page">
+        <div class="center-container">
+            <div class="title">第3章 刚体动力学</div>
+            <div class="section-menu">
+                <button class="menu-btn" onclick="openInCurrentWindow('刚体动力学理论知识框架', '刚体动力学知识图谱.html')">理论知识框架</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">教学课件</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">仿真交互模型</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">教学视频</button>
+            </div>
+            <button class="back-btn" onclick="goBack('mechanics')">返回力学篇</button>
+        </div>
+    </div>
+
+    <div id="vibrationWave" class="page">
+        <div class="center-container">
+            <div class="title">第5章 机械振动和机械波</div>
+            <div class="section-menu">
+                <button class="menu-btn" onclick="openInCurrentWindow('机械振动与波理论知识框架', '机械振动和机械波知识图谱.html')">理论知识框架</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">教学课件</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">仿真交互模型</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">教学视频</button>
+            </div>
+            <button class="back-btn" onclick="goBack('mechanics')">返回力学篇</button>
+        </div>
+    </div>
+
+    <div id="thermoPart" class="page">
+        <div class="center-container">
+            <div class="title">第二篇 气体动理论和热力学基础</div>
+            <div class="sub-menu">
+                <button class="menu-btn" onclick="showPage('gasTheory')">第6章 气体动理论基础</button>
+                <button class="menu-btn" onclick="showPage('thermoBase')">第7章 热力学基础</button>
+            </div>
+            <button class="back-btn" onclick="goHome()">返回首页</button>
+        </div>
+    </div>
+
+    <div id="gasTheory" class="page">
+        <div class="center-container">
+            <div class="title">第6章 气体动理论基础</div>
+            <div class="section-menu">
+                <button class="menu-btn" onclick="openInCurrentWindow('气体动理论基础知识框架', '气体动理论基础知识图谱.html')">理论知识框架</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">教学课件</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">仿真交互模型</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">教学视频</button>
+            </div>
+            <button class="back-btn" onclick="goBack('thermoPart')">返回上一级</button>
+        </div>
+    </div>
+
+    <div id="thermoBase" class="page">
+        <div class="center-container">
+            <div class="title">第7章 热力学基础</div>
+            <div class="section-menu">
+                <button class="menu-btn" onclick="openInCurrentWindow('热力学基础理论知识框架', '热力学基础知识图谱.html')">理论知识框架</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">教学课件</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">仿真交互模型</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">教学视频</button>
+            </div>
+            <button class="back-btn" onclick="goBack('thermoPart')">返回上一级</button>
+        </div>
+    </div>
+
+    <div id="electroPart" class="page">
+        <div class="center-container">
+            <div class="title">第三篇 电磁学</div>
+            <div class="sub-menu">
+                <button class="menu-btn" onclick="alert('模块待完善')">第8章 真空中的静电场</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">第9章 静电场中的导体</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">第10章 恒定电流和恒定磁场</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">第12章 电磁感应</button>
+            </div>
+            <button class="back-btn" onclick="goHome()">返回首页</button>
+        </div>
+    </div>
+
+    <div id="opticsPart" class="page">
+        <div class="center-container">
+            <div class="title">第四篇 光学</div>
+            <div class="sub-menu">
+                <button class="menu-btn" onclick="alert('模块待完善')">第14章 光的干涉</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">第15章 光的衍射</button>
+                <button class="menu-btn" onclick="alert('模块待完善')">第16章 光的偏振</button>
+            </div>
+            <button class="back-btn" onclick="goHome()">返回首页</button>
         </div>
     </div>
 
@@ -554,7 +600,8 @@ document.addEventListener('click', function(e) {
 </div>
 
 <div id="xiaod-avatar" title="召唤/拖拽 Xiao D">
-    <div class="ai-antenna"></div> <div class="ai-face">
+    <div class="ai-antenna"></div> 
+    <div class="ai-face">
         <div class="ai-eyes">
             <div class="ai-eye"></div>
             <div class="ai-eye"></div>
@@ -697,7 +744,7 @@ document.addEventListener('click', function(e) {
 </style>
 
 <script>
-  // ================= 拖拽逻辑 (无缝兼容触摸与鼠标) =================
+  // ================= 拖拽逻辑 =================
   const avatar = document.getElementById('xiaod-avatar');
   let isDragging = false, hasMoved = false;
   let startY = 0, startTop = 0;
@@ -744,10 +791,10 @@ document.addEventListener('click', function(e) {
   let conversationId = "";
 
   const commandDict = {
-      '[CMD: 3d_trajectory]': { name: '三维曲线运动仿真', action: () => { if(typeof open3dTrajectorySimulation === 'function') open3dTrajectorySimulation(); } },
-      '[CMD: 3d_kinematics]': { name: '三维速度加速度模型', action: () => { if(typeof open3dKinematicsSimulation === 'function') open3dKinematicsSimulation(); } },
-      '[CMD: wind_speed]': { name: '相对运动风速合成', action: () => { if(typeof openWindSpeedSimulation === 'function') openWindSpeedSimulation(); } },
-      '[CMD: galileo_transform]': { name: '伽利略坐标变换', action: () => { if(typeof openGalileoTransformSimulation === 'function') openGalileoTransformSimulation(); } },
+      '[CMD: 3d_trajectory]': { name: '三维曲线运动仿真', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('三维曲线运动仿真', '3d_kinematics.html'); } },
+      '[CMD: 3d_kinematics]': { name: '三维速度加速度模型', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('三维速度加速度模型', 'physics_3d_kinematics.html'); } },
+      '[CMD: wind_speed]': { name: '相对运动风速合成', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('相对运动风速合成', 'wind_speed_simulation.html'); } },
+      '[CMD: galileo_transform]': { name: '伽利略坐标变换', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('伽利略坐标变换', 'relative_movement.html'); } },
       '[CMD: carrier_takeoff]': { name: '航母舰载机起飞', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('航母舰载机起飞', '航母舰载机相对运动.html'); } },
       '[CMD: carrier_crosswind]': { name: '航母侧风危机补偿', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('航母侧风危机', '遇到侧风危机的舰载机.html'); } },
       '[CMD: high_speed_train]': { name: '高铁水滴受力(法向加速度)', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('转弯时的一滴水', '拐弯高铁里的水滴.html'); } },
