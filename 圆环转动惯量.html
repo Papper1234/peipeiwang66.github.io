@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 圆环转动惯量推演实验室</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' },
+            startup: {
+                pageReady: () => {
+                    return MathJax.startup.defaultPageReady().then(() => {
+                        if(typeof updateMath === 'function') updateMath();
+                    });
+                }
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.92); --primary: #00f2fe; --text: #e2e8f0; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.8); backdrop-filter: blur(12px); border-radius: 12px; z-index: 10; padding: 20px; box-sizing: border-box; }
+        
+        /* 左侧控制区 */
+        #controls { top: 20px; left: 20px; width: 340px; }
+        h1 { margin: 0; font-size: 18px; color: var(--primary); }
+        .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(0, 242, 254, 0.2); padding-bottom: 10px; margin-bottom: 15px; }
+        
+        .control-group { margin-bottom: 18px; }
+        label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; font-weight: 600; color: #94a3b8; }
+        input[type=range] { width: 100%; accent-color: var(--primary); cursor: pointer; }
+        
+        button { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 13px; width: 100%; box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3); }
+        button:hover { background: #00c8d2; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5); }
+
+        /* 右侧推导区 & 折叠动画 */
+        #math-panel { 
+            top: 20px; right: 20px; width: 500px; max-height: calc(100vh - 40px); overflow-y: auto; 
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease; 
+        }
+        #math-panel.collapsed { transform: translateX(120%); opacity: 0; pointer-events: none; }
+        
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        .derivation-step { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 18px; margin-bottom: 12px; border-left: 4px solid #334; }
+        .step-header { font-size: 15px; font-weight: bold; color: var(--primary); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+
+        #close-math-btn { width: auto; background: rgba(255,255,255,0.1); box-shadow: none; color: #cbd5e1; padding: 5px 10px; font-size: 12px; }
+        #close-math-btn:hover { background: rgba(239, 68, 68, 0.8); color: white; }
+
+        /* 3D 标签样式 */
+        .label-3d { font-weight: bold; font-size: 16px; pointer-events: none; text-shadow: 2px 2px 4px #000; }
+        .axis-label { font-family: 'Arial Black', sans-serif; font-size: 20px; }
+        .math-italic { font-style: italic; font-family: 'Times New Roman', serif; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <div class="header-box">
+            <h1>⚙️ 圆环动力学参数</h1>
+        </div>
+        
+        <div class="control-group">
+            <label>圆环质量 (m): <span id="val-m" style="color:var(--primary)">2.0 kg</span></label>
+            <input type="range" id="input-m" min="0.5" max="10" value="2" step="0.5">
+        </div>
+        <div class="control-group">
+            <label>圆环半径 (R): <span id="val-r" style="color:var(--primary)">5.0 m</span></label>
+            <input type="range" id="input-r" min="2" max="8" value="5" step="0.5">
+        </div>
+
+        <div style="background:rgba(0,0,0,0.3); padding:15px; border-radius:8px; border-left:4px solid var(--primary); margin-bottom: 15px; margin-top: 25px;">
+            <div style="font-size:12px; color:#94a3b8;">当前宏观转动惯量</div>
+            <div id="result-text" style="font-size:24px; font-weight:bold; margin-top:5px; color:var(--primary);">I = 50.00 kg·m²</div>
+        </div>
+
+        <button id="toggle-math-btn" style="background: #10b981; box-shadow: 0 4px 15px rgba(16,185,129,0.3);">📘 显示/隐藏数学推导面板</button>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <div class="header-box">
+            <h1>📐 微元积分推导剖析</h1>
+            <button id="close-math-btn">✖ 收起</button>
+        </div>
+        <div id="math-content" style="font-size: 14px; line-height: 1.7; color: #e2e8f0;">
+            </div>
+    </div>
+
+    <script>
+        // ================= 1. 初始化引擎 =================
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050a15, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(12, 18, 20);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 0, 0);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+        sun.position.set(15, 25, 15);
+        scene.add(sun);
+
+        // ================= 2. 核心构建体系 =================
+        let ringObj, dmMesh, rotationAxis;
+        let visualElements = []; 
+        let mass = 2.0, R = 5.0;
+
+        function createLabel(text, className, color="#fff") {
+            const div = document.createElement('div');
+            div.className = `label-3d ${className}`;
+            div.innerHTML = text;
+            div.style.color = color;
+            return new THREE.CSS2DObject(div);
+        }
+
+        function clearVisuals() {
+            [...visualElements].forEach(el => {
+                if (el.isCSS2DObject && el.element.parentNode) el.element.parentNode.removeChild(el.element);
+                scene.remove(el);
+            });
+            visualElements = [];
+            
+            if(ringObj) scene.remove(ringObj);
+            if(dmMesh) scene.remove(dmMesh);
+            if(rotationAxis) scene.remove(rotationAxis);
+        }
+
+        function buildScene() {
+            clearVisuals();
+
+            // 1. 绝对坐标系
+            const axesLength = R * 1.5;
+            const axesHelper = new THREE.AxesHelper(axesLength);
+            visualElements.push(axesHelper);
+            scene.add(axesHelper);
+
+            const labX = createLabel('X', 'axis-label', '#ff4444'); labX.position.set(axesLength, 0, 0);
+            const labY = createLabel('Y', 'axis-label', '#44ff44'); labY.position.set(0, axesLength, 0);
+            const labZ = createLabel('Z (转轴)', 'axis-label', '#4444ff'); labZ.position.set(0, 0, axesLength);
+            visualElements.push(labX, labY, labZ);
+            scene.add(labX); scene.add(labY); scene.add(labZ);
+
+            // 2. 部署圆环 (放平在 XY 平面上)
+            const tubeRadius = 0.2;
+            const geo = new THREE.TorusGeometry(R, tubeRadius, 16, 64);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, transparent: true, opacity: 0.6, metalness: 0.3 });
+            ringObj = new THREE.Mesh(geo, mat);
+            scene.add(ringObj);
+
+            // 3. 部署微元 dm (在圆环上的极小一段弧度)
+            const dmAngle = Math.PI / 4; // 设定 dm 位于 45度角位置
+            const dmArc = 0.3; // 微元所占的弧度大小
+            const dmGeo = new THREE.TorusGeometry(R, tubeRadius * 1.1, 16, 32, dmArc);
+            dmMesh = new THREE.Mesh(dmGeo, new THREE.MeshBasicMaterial({ color: 0xff3366 }));
+            // 将 dm 旋转到 45度位置
+            dmMesh.rotation.z = dmAngle - dmArc/2; 
+            scene.add(dmMesh);
+
+            // 微元标签 dm
+            const dmLabel = createLabel('dm', '', '#ff3366');
+            const dmPosX = R * Math.cos(dmAngle);
+            const dmPosY = R * Math.sin(dmAngle);
+            dmLabel.position.set(dmPosX * 1.15, dmPosY * 1.15, 0); // 稍微向外偏移
+            visualElements.push(dmLabel);
+            scene.add(dmLabel);
+
+            // 4. 画出距离向量 R (黄色虚线)
+            const center = new THREE.Vector3(0,0,0);
+            const dmPoint = new THREE.Vector3(dmPosX, dmPosY, 0);
+            const rGeo = new THREE.BufferGeometry().setFromPoints([center, dmPoint]);
+            const rMat = new THREE.LineDashedMaterial({ color: 0xfacc15, dashSize: 0.3, gapSize: 0.15 });
+            const rLine = new THREE.Line(rGeo, rMat);
+            rLine.computeLineDistances();
+            visualElements.push(rLine);
+            scene.add(rLine);
+
+            // R 的标签
+            const rLabel = createLabel('R', 'math-italic', '#facc15');
+            rLabel.position.copy(center).lerp(dmPoint, 0.5);
+            rLabel.position.z += 0.5; // 稍微抬高防止穿模
+            visualElements.push(rLabel);
+            scene.add(rLabel);
+
+            // 5. 高亮 Z 轴作为旋转轴 (红色光柱)
+            const axisGeo = new THREE.CylinderGeometry(0.06, 0.06, R * 3, 12);
+            rotationAxis = new THREE.Mesh(axisGeo, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+            rotationAxis.rotation.x = Math.PI / 2; // 沿 Z 轴方向
+            scene.add(rotationAxis);
+
+            updateLogic();
+            updateMath();
+        }
+
+        // ================= 3. 数学推导引擎 =================
+        function updateLogic() {
+            const resultI = mass * R * R;
+            document.getElementById('result-text').innerText = `I = ${resultI.toFixed(2)} kg·m²`;
+        }
+
+        function updateMath() {
+            const content = document.getElementById('math-content');
+            
+            const html = `
+                <div style="font-size: 14px; color:#facc15; font-weight:bold; margin-bottom:10px;">极坐标微元法推导</div>
+                <div class="derivation-step">
+                    <div class="step-header">1. 质量微元与线密度</div>
+                    如图所示，均匀圆环的总质量为 $m$，半径为 $R$。圆环为一维线状质量分布，其线密度 $\\lambda$ 为：
+                    $$ \\lambda = \\frac{m}{2\\pi R} $$
+                    在圆环上取一段极小的弧长微元 $dl$ (图中的粉红色段)。对应的圆心角微元设为 $d\\theta$，则几何弧长 $dl = R d\\theta$。<br>
+                    该微元的质量为：
+                    $$ dm = \\lambda dl = \\left(\\frac{m}{2\\pi R}\\right) (R d\\theta) = \\frac{m}{2\\pi} d\\theta $$
+                </div>
+                <div class="derivation-step">
+                    <div class="step-header">2. 确定微元到转轴的距离</div>
+                    注意观察 3D 模型中的黄色虚线。因为圆环是一个完美的圆周，且旋转轴为垂直于平面的中心 Z 轴。<br>
+                    这意味着，无论微元 $dm$ 取在圆环上的哪一个位置，它到 Z 轴的最短垂直距离 $r$ <b>始终是一个常数</b>，即等于圆环的半径：
+                    $$ r = R $$
+                </div>
+                <div class="derivation-step">
+                    <div class="step-header">3. 积分求解转动惯量</div>
+                    根据刚体转动惯量的定义式 $I = \\int r^2 dm$，我们沿着整个圆环进行积分（极角 $\\theta$ 从 $0$ 到 $2\\pi$）：
+                    $$ I_z = \\int_0^{2\\pi} R^2 dm = \\int_0^{2\\pi} R^2 \\left(\\frac{m}{2\\pi} d\\theta\\right) $$
+                    由于 $R$ 和 $\\frac{m}{2\\pi}$ 都是常数，可以直接提取到积分号外面：
+                    $$ I_z = R^2 \\cdot \\frac{m}{2\\pi} \\int_0^{2\\pi} d\\theta $$
+                    完成定积分：
+                    $$ I_z = R^2 \\cdot \\frac{m}{2\\pi} \\cdot 2\\pi = mR^2 $$
+                </div>
+                <div class="derivation-step" style="border-left-color: #00f2fe; background: rgba(0, 242, 254, 0.05);">
+                    <div class="step-header" style="color:#00f2fe;">💡 极简推导思维法</div>
+                    由于圆环上<b>所有的质量元</b>到转轴的距离都是严格相等的 $R$，在积分 $I = \\int r^2 dm$ 中，$r^2 = R^2$ 可以直接作为常数提出积分号：<br>
+                    $$ I = R^2 \\int dm $$
+                    而 $\\int dm$ 就是对圆环所有微元质量进行求和，即总质量 $m$。因此：
+                    $$ I = mR^2 $$
+                </div>
+            `;
+
+            content.innerHTML = html;
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise([content]);
+            }
+        }
+
+        // ================= 4. 渲染循环 =================
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        // ================= 5. 事件响应 & UI 控制 =================
+        document.getElementById('input-r').addEventListener('input', (e) => {
+            R = parseFloat(e.target.value);
+            document.getElementById('val-r').innerText = R.toFixed(1) + " m";
+            buildScene();
+        });
+
+        document.getElementById('input-m').addEventListener('input', (e) => {
+            mass = parseFloat(e.target.value);
+            document.getElementById('val-m').innerText = mass.toFixed(1) + " kg";
+            updateLogic();
+            updateMath(); 
+        });
+
+        const mathPanel = document.getElementById('math-panel');
+        document.getElementById('toggle-math-btn').addEventListener('click', () => {
+            mathPanel.classList.toggle('collapsed');
+        });
+        document.getElementById('close-math-btn').addEventListener('click', () => {
+            mathPanel.classList.add('collapsed');
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if(e.key.toLowerCase() === 'p') {
+                const link = document.createElement('a');
+                link.download = 'moment_of_inertia_ring.png';
+                link.href = renderer.domElement.toDataURL();
+                link.click();
+            }
+        });
+
+        // 启动
+        buildScene();
+        animate();
+    </script>
+</body>
+</html>

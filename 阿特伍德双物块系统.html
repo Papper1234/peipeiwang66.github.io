@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 阿特伍德双物块刚体动力学分析台</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --bg: #0f172a; --panel: rgba(15, 23, 42, 0.85); --primary: #3b82f6; 
+            --c-1: #00ccff; --c-2: #ff3366; --c-c: #facc15; --c-force: #10b981; --c-warn: #a855f7; --text: #f8fafc;
+        }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        /* 3D 空间标签样式 */
+        .label-obj {
+            font-family: 'Arial Black', sans-serif; font-size: 24px; font-weight: bold; color: #ffffff;
+            text-shadow: 0 0 10px rgba(0,0,0,0.8), 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none;
+        }
+        .label-force {
+            font-family: 'Times New Roman', Times, serif; font-style: italic; font-size: 16px; font-weight: bold;
+            color: var(--c-force); text-shadow: 1px 1px 3px rgba(0,0,0,0.9); pointer-events: none;
+        }
+        .label-force sub { font-size: 11px; }
+
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6); backdrop-filter: blur(12px); border-radius: 12px; z-index: 10; padding: 20px; box-sizing: border-box; }
+        
+        /* 左侧控制台 */
+        #controls-panel { top: 20px; left: 20px; width: 340px; }
+        h1 { margin: 0 0 15px 0; font-size: 18px; color: var(--primary); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; align-items: center; gap: 8px;}
+        .control-group { margin-bottom: 12px; }
+        label { font-size: 13px; color: #cbd5e1; display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: bold; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--primary); }
+        input[type=range]:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 14px; width: 100%; margin-top: 5px; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
+        button:hover:not(:disabled) { background: #2563eb; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6); }
+        button:disabled { background: #475569; cursor: not-allowed; opacity: 0.8; box-shadow: none; transform: none; }
+        
+        /* 状态警告框 */
+        #alert-box { display: none; background: rgba(168, 85, 247, 0.2); border-left: 3px solid var(--c-warn); padding: 8px 12px; font-size: 12px; color: #d8b4fe; margin-top: 10px; border-radius: 4px; line-height: 1.5;}
+
+        .dashboard { margin-top: 15px; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 15px; border: 1px solid rgba(255,255,255,0.05); }
+        .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px;}
+        .data-val { font-family: monospace; font-size: 16px; font-weight: bold; }
+
+        /* 右侧公式面板 */
+        #math-panel { top: 20px; right: 20px; width: 440px; max-height: calc(100vh - 40px); overflow-y: auto; padding-right: 10px; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+        .math-card { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 15px; margin-bottom: 15px; transition: 0.4s; }
+        .math-card h2 { font-size: 15px; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px; color: #60a5fa; }
+        .math-text { font-size: 13px; line-height: 1.6; color: #e2e8f0; }
+        .highlight { background: rgba(16, 185, 129, 0.15); border-left: 4px solid #10b981; padding: 10px; margin-top: 10px; font-size: 14px; border-radius: 0 6px 6px 0; color: #a7f3d0;}
+        
+        #hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 13px; color: rgba(255,255,255,0.8); pointer-events: none; background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 20px; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="controls-panel" class="glass-panel">
+        <h1>⚙️ 阿特伍德系统参数</h1>
+        
+        <div class="control-group">
+            <label style="color: var(--c-1);">物块 1 质量 (m₁): <span id="val-m1">2.0 kg</span></label>
+            <input type="range" id="m1" min="0.5" max="8.0" value="2.0" step="0.5">
+        </div>
+        <div class="control-group">
+            <label style="color: var(--c-2);">物块 2 质量 (m₂): <span id="val-m2">4.0 kg</span></label>
+            <input type="range" id="m2" min="0.5" max="10.0" value="4.0" step="0.5">
+        </div>
+        <div class="control-group">
+            <label style="color: var(--c-c);">定滑轮质量 (m): <span id="val-m">2.0 kg</span></label>
+            <input type="range" id="m" min="0.0" max="10.0" value="2.0" step="0.5">
+        </div>
+        <div class="control-group" style="margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 10px;">
+            <label style="color: var(--c-warn);">轴承摩擦阻力矩 (M): <span id="val-M">5.0 N·m</span></label>
+            <input type="range" id="M" min="0.0" max="100.0" value="5.0" step="1.0">
+            <div style="font-size:11px; color:#64748b; margin-top:2px;">(滑轮固定半径 r = 3 m)</div>
+        </div>
+
+        <button id="btn-action" style="margin-top: 15px;">▶ 释放系统运行</button>
+        <button id="btn-reset" style="background: #475569; margin-top: 10px; box-shadow: none;">↻ 重置位置</button>
+
+        <div id="alert-box">⚠️ 摩擦阻力矩过大或驱动力不足，系统已被完全锁死！</div>
+
+        <div class="dashboard">
+            <div class="data-row">
+                <span style="color: #94a3b8;">系统加速度 (a)</span>
+                <span class="data-val" id="disp-a" style="color: #10b981;">0.00 m/s²</span>
+            </div>
+            <div class="data-row" style="border-top: 1px dashed #334155; padding-top: 8px; margin-top: 8px;">
+                <span style="color: var(--c-1);">左侧张力 (T₁)</span>
+                <span class="data-val" id="disp-t1" style="color: var(--c-force);">0.00 N</span>
+            </div>
+            <div class="data-row">
+                <span style="color: var(--c-2);">右侧张力 (T₂)</span>
+                <span class="data-val" id="disp-t2" style="color: var(--c-force);">0.00 N</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <h1 style="margin-bottom: 20px; font-size: 18px; color: white;">📐 隔离法与动力学方程</h1>
+        
+        <div class="math-card">
+            <h2>1. 隔离平动 (牛顿第二定律)</h2>
+            <div class="math-text">
+                <i>请对照左侧 3D 画面中的绿色受力矢量观察：</i><br><br>
+                对物块 1（较轻，加速上升）：<br>
+                $$ T_1 - m_1 g = m_1 a $$
+                对物块 2（较重，加速下降）：<br>
+                $$ m_2 g - T_2 = m_2 a $$
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h2 style="color: var(--c-c);">2. 隔离定轴转动 (考虑阻力矩 $M$)</h2>
+            <div class="math-text">
+                定滑轮受到两侧拉力产生的驱动力矩，以及试图阻碍转动的摩擦阻力矩 $M$。<br>
+                根据刚体定轴转动定律（转动惯量 $J = \frac{1}{2}m r^2$，$\alpha = a/r$）：<br>
+                $$ (T_2 - T_1)r - M = J\alpha $$
+                化简可得张力差方程：<br>
+                $$ T_2 - T_1 = \frac{1}{2}m a + \frac{M}{r} $$
+            </div>
+        </div>
+
+        <div class="math-card" style="border-color: #10b981; background: rgba(16, 185, 129, 0.05);">
+            <h2 style="color: #10b981;">3. 系统综合求解</h2>
+            <div class="math-text">
+                联立三式消去 $T_1$ 和 $T_2$，解出系统的统一加速度：
+                <div class="highlight">
+                    $$ a = \frac{(m_2 - m_1)g - M/r}{m_1 + m_2 + \frac{1}{2}m} $$
+                </div>
+                <b>💡 核心物理图像：</b><br>
+                1. 分子代表<b>系统净驱动力</b>：即重力差扣除掉等效的阻力。<br>
+                2. 分母代表<b>系统总惯性</b>：定滑轮转动等效增加了 $\frac{1}{2}m$ 的平动质量。<br>
+                3. 临界条件：当有效驱动力 $(m_2-m_1)g \le M/r$ 时，系统无法克服静摩擦启动，保持静止！
+            </div>
+        </div>
+    </div>
+    
+    <div id="hint">🖱️ 提示：按住鼠标左键可 360° 旋转视角，观察空间矢量与运动</div>
+
+    <script>
+        // ================= 1. 初始化 3D 引擎与渲染器 =================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0f172a, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 10, 50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        container.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; 
+        controls.target.set(0, 5, 0); 
+        controls.maxDistance = 100;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 20);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // ================= 2. 物理实体与视觉构建 =================
+        const R = 3; 
+        const pulleyY = 18; // 滑轮高度悬空
+        
+        // 顶部支架与悬挂
+        const ceilingGeo = new THREE.BoxGeometry(10, 1, 4);
+        const ceilingMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
+        const ceiling = new THREE.Mesh(ceilingGeo, ceilingMat);
+        ceiling.position.set(0, pulleyY + 2, 0);
+        scene.add(ceiling);
+
+        const support = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 2, 8), ceilingMat);
+        support.position.set(0, pulleyY + 1, 0);
+        scene.add(support);
+
+        // 定滑轮 C
+        const pulleyGroup = new THREE.Group();
+        pulleyGroup.position.set(0, pulleyY, 0); 
+        scene.add(pulleyGroup);
+
+        const pulley = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 1.5, 32), new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.6 }));
+        pulley.rotateX(Math.PI / 2);
+        pulleyGroup.add(pulley);
+        pulleyGroup.add(new THREE.Mesh(new THREE.BoxGeometry(R*2, 0.2, 1.6), new THREE.MeshBasicMaterial({ color: 0xfacc15 }))); // 标志线
+        pulleyGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2.5, 16), new THREE.MeshStandardMaterial({color:0x000000})).rotateX(Math.PI/2)); // 轴
+        
+        function createLabel(text, className, color) {
+            const div = document.createElement('div');
+            div.className = className; div.innerHTML = text; if(color) div.style.color = color;
+            return new THREE.CSS2DObject(div);
+        }
+
+        const labelC = createLabel('C', 'label-obj', '#facc15');
+        labelC.position.set(0, 0, 2);
+        pulleyGroup.add(labelC);
+
+        // 物块 1 (左侧) 与 物块 2 (右侧)
+        const blockGeo = new THREE.BoxGeometry(3, 3, 3);
+        const block1 = new THREE.Mesh(blockGeo, new THREE.MeshStandardMaterial({ color: 0x00ccff }));
+        const block2 = new THREE.Mesh(blockGeo, new THREE.MeshStandardMaterial({ color: 0xff3366 }));
+        scene.add(block1);
+        scene.add(block2);
+
+        const label1 = createLabel('1', 'label-obj', '#ffffff'); label1.position.set(0, 2.5, 0); block1.add(label1);
+        const label2 = createLabel('2', 'label-obj', '#ffffff'); label2.position.set(0, 2.5, 0); block2.add(label2);
+
+        // 绳子
+        const ropeMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+        const rope1 = new THREE.Line(new THREE.BufferGeometry(), ropeMat);
+        const rope2 = new THREE.Line(new THREE.BufferGeometry(), ropeMat);
+        scene.add(rope1); scene.add(rope2);
+
+        // ================= 3. 受力矢量系统 =================
+        const forceGroup = new THREE.Group();
+        scene.add(forceGroup);
+        const FORCE_SCALE = 0.12; 
+
+        function createArrow(color) { return new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, color, 1, 0.6); }
+
+        const arrT1 = createArrow(0x10b981); const arrG1 = createArrow(0x10b981);
+        const arrT2 = createArrow(0x10b981); const arrG2 = createArrow(0x10b981);
+        forceGroup.add(arrT1); forceGroup.add(arrG1); forceGroup.add(arrT2); forceGroup.add(arrG2);
+
+        const labT1 = createLabel('T<sub>1</sub>', 'label-force'); const labG1 = createLabel('m<sub>1</sub>g', 'label-force');
+        const labT2 = createLabel('T<sub>2</sub>', 'label-force'); const labG2 = createLabel('m<sub>2</sub>g', 'label-force');
+        forceGroup.add(labT1); forceGroup.add(labG1); forceGroup.add(labT2); forceGroup.add(labG2);
+
+        function updateArrow(arrow, label, origin, dir, magnitude, offsetX) {
+            let visLen = magnitude * FORCE_SCALE;
+            if (visLen < 0.1) { arrow.visible = false; label.visible = false; } else {
+                arrow.visible = true; label.visible = true;
+                let startPos = origin.clone().add(new THREE.Vector3(offsetX, 0, 0));
+                arrow.position.copy(startPos);
+                arrow.setDirection(dir);
+                arrow.setLength(visLen, visLen*0.25, visLen*0.15);
+                label.position.copy(startPos.clone().add(dir.clone().multiplyScalar(visLen + 1.2)));
+            }
+        }
+
+        // ================= 4. 物理核心控制 =================
+        let isRunning = false;
+        const g = 9.8;
+        let m1 = 2.0, m2 = 4.0, mC = 2.0, Mf = 5.0;
+        
+        let a = 0, v = 0;
+        let T1 = 0, T2 = 0;
+        
+        let y1_init = 5; 
+        let y2_init = 5;  
+        let y1 = y1_init; let y2 = y2_init; let thetaC = 0;
+
+        const btnAction = document.getElementById('btn-action');
+        const btnReset = document.getElementById('btn-reset');
+        const alertBox = document.getElementById('alert-box');
+        
+        function calculatePhysics() {
+            // 注意：m2 默认在右侧，我们设定下落为正向。驱动力为 (m2 - m1)g
+            let drivingForce = (m2 - m1) * g;
+            let effectiveFriction = Mf / R;
+            
+            // 考虑启动临界条件
+            if (Math.abs(drivingForce) <= effectiveFriction) {
+                // 被摩擦力锁死
+                a = 0;
+                alertBox.style.display = "block";
+                T1 = m1 * g; 
+                T2 = m2 * g; 
+            } else {
+                // 克服静摩擦，开始加速
+                alertBox.style.display = "none";
+                let netForce = drivingForce > 0 ? drivingForce - effectiveFriction : drivingForce + effectiveFriction;
+                a = netForce / (m1 + m2 + mC / 2);
+                
+                T1 = m1 * (g + a); // a>0时，m1向上加速
+                T2 = m2 * (g - a); // a>0时，m2向下加速
+            }
+            
+            document.getElementById('disp-a').innerText = Math.abs(a).toFixed(2) + " m/s²";
+            document.getElementById('disp-t1').innerText = T1.toFixed(2) + " N";
+            document.getElementById('disp-t2').innerText = T2.toFixed(2) + " N";
+        }
+
+        function updateScene() {
+            block1.position.set(-R, y1, 0); 
+            block2.position.set(R, y2, 0); 
+            pulleyGroup.rotation.z = -thetaC; // a>0时顺时针转
+
+            rope1.geometry.setFromPoints([ new THREE.Vector3(-R, pulleyY, 0), new THREE.Vector3(-R, y1 + 1.5, 0) ]);
+            rope2.geometry.setFromPoints([ new THREE.Vector3(R, pulleyY, 0), new THREE.Vector3(R, y2 + 1.5, 0) ]);
+
+            // 更新受力箭头：重力向下，拉力向上
+            updateArrow(arrT1, labT1, new THREE.Vector3(-R, y1, 0), new THREE.Vector3(0,1,0), T1, -2.5);
+            updateArrow(arrG1, labG1, new THREE.Vector3(-R, y1, 0), new THREE.Vector3(0,-1,0), m1*g, -2.5);
+            updateArrow(arrT2, labT2, new THREE.Vector3(R, y2, 0), new THREE.Vector3(0,1,0), T2, 2.5);
+            updateArrow(arrG2, labG2, new THREE.Vector3(R, y2, 0), new THREE.Vector3(0,-1,0), m2*g, 2.5);
+        }
+
+        function resetSim() {
+            isRunning = false;
+            v = 0; y1 = y1_init; y2 = y2_init; thetaC = 0;
+            
+            btnAction.innerText = "▶ 释放系统运行";
+            ['m1', 'm2', 'm', 'M'].forEach(id => document.getElementById(id).disabled = false);
+            
+            calculatePhysics();
+            updateScene();
+        }
+
+        btnAction.addEventListener('click', () => {
+            if(!isRunning) {
+                if (y2 <= -10 || y1 <= -10) resetSim(); // 触底重置
+                if (a === 0) return; // 锁死不运行
+                
+                isRunning = true;
+                btnAction.innerText = "⏸ 暂停系统";
+                ['m1', 'm2', 'm', 'M'].forEach(id => document.getElementById(id).disabled = true);
+            } else {
+                isRunning = false;
+                btnAction.innerText = "▶ 继续运行";
+                ['m1', 'm2', 'm', 'M'].forEach(id => document.getElementById(id).disabled = false);
+            }
+        });
+
+        btnReset.addEventListener('click', resetSim);
+
+        ['m1', 'm2', 'm', 'M'].forEach(id => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                let val = parseFloat(e.target.value);
+                let unit = id === 'M' ? " N·m" : " kg";
+                document.getElementById('val-'+id).innerText = val.toFixed(1) + unit;
+                if(id === 'm1') m1 = val;
+                if(id === 'm2') m2 = val;
+                if(id === 'm') mC = val;
+                if(id === 'M') Mf = val;
+                
+                calculatePhysics();
+                block1.scale.setScalar(Math.pow(m1/2, 1/3));
+                block2.scale.setScalar(Math.pow(m2/2, 1/3));
+                updateScene(); 
+            });
+        });
+
+        // ================= 5. 渲染循环 =================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); 
+            
+            let dt = clock.getDelta();
+            if (dt > 0.05) dt = 0.05;
+
+            if (isRunning) {
+                v += a * dt;
+                y1 += v * dt;
+                y2 -= v * dt;
+                thetaC += (v / R) * dt;
+
+                // 越界停止判定
+                if (y2 <= -10 || y1 <= -10 || y1 >= pulleyY - 3 || y2 >= pulleyY - 3) {
+                    isRunning = false;
+                    btnAction.innerText = "↻ 实验结束，请重置";
+                }
+                updateScene();
+            }
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera); 
+        }
+
+        // ================= 6. 开发者一键截图插件 =================
+        window.addEventListener('keydown', function(e) {
+            if(e.key === 'p' || e.key === 'P') {
+                const canvas = document.querySelector('canvas');
+                const dataURL = canvas.toDataURL('image/png');
+                let safeTitle = document.title.replace(/[\s\(\)\[\]\/:*?"<>|（）]/g, '_').replace(/_+/g, '_'); 
+                let finalFileName = 'cover_' + safeTitle + '.png';
+                const link = document.createElement('a');
+                link.download = finalFileName;
+                link.href = dataURL;
+                link.click();
+                const hint = document.createElement('div');
+                hint.innerHTML = '📸 截图成功！<br><span style="color:#d32f2f;">' + finalFileName + '</span>';
+                hint.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#00f2fe; color:#000; padding:15px; border-radius:8px; z-index:99999;';
+                document.body.appendChild(hint);
+                setTimeout(() => hint.remove(), 3000);
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        resetSim();
+        animate();
+    </script>
+</body>
+</html>

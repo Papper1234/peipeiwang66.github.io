@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 万向节回转仪 (自由陀螺仪) 物理实验室</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --bg: #050510; --panel: rgba(10, 15, 30, 0.85); --primary: #3b82f6; 
+            --c-a: #60a5fa; --c-b: #facc15; --c-c: #ef4444; --text: #f8fafc;
+        }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        /* 3D 空间标签样式 */
+        .label-3d {
+            font-family: 'Arial Black', sans-serif; font-size: 22px; font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.9), -1px -1px 4px rgba(0,0,0,0.9); pointer-events: none;
+        }
+
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6); backdrop-filter: blur(12px); border-radius: 12px; z-index: 10; padding: 20px; box-sizing: border-box; }
+        
+        /* 左侧控制台 */
+        #controls-panel { top: 20px; left: 20px; width: 340px; }
+        h1 { margin: 0 0 15px 0; font-size: 18px; color: var(--primary); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; align-items: center; gap: 8px;}
+        .control-group { margin-bottom: 15px; }
+        label { font-size: 13px; color: #cbd5e1; display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: bold; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--primary); }
+        
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 14px; width: 100%; margin-top: 5px; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
+        button:hover { background: #2563eb; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6); }
+        
+        .btn-green { background: #10b981; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); }
+        .btn-green:hover { background: #059669; box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6); }
+        
+        .btn-red { background: #ef4444; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
+        .btn-red:hover { background: #dc2626; box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6); }
+
+        /* 右侧推导面板 */
+        #math-panel { top: 20px; right: 20px; width: 440px; max-height: calc(100vh - 40px); overflow-y: auto; padding-right: 10px; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+        .math-card { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 15px; margin-bottom: 15px; transition: 0.4s; }
+        .math-card h2 { font-size: 15px; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px; color: #60a5fa; }
+        .math-text { font-size: 13px; line-height: 1.6; color: #e2e8f0; }
+        .highlight { background: rgba(250, 204, 21, 0.1); border-left: 4px solid var(--c-b); padding: 10px; margin-top: 10px; font-size: 14px; border-radius: 0 6px 6px 0; color: #fef08a;}
+        
+        #hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 13px; color: rgba(255,255,255,0.8); pointer-events: none; background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 20px; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="controls-panel" class="glass-panel">
+        <h1>⚙️ 万向节系统控制台</h1>
+        
+        <div style="font-size: 12px; color: #94a3b8; margin-bottom: 15px; line-height: 1.5;">
+            手动拖拽下方滑块，观察万向节支架是如何完美解耦三维空间运动的。
+        </div>
+
+        <div class="control-group">
+            <label style="color: var(--c-a);">外环 A-A 轴旋转 (偏航角): <span id="val-a">0°</span></label>
+            <input type="range" id="angle-a" min="-180" max="180" value="0" step="1">
+        </div>
+        <div class="control-group">
+            <label style="color: var(--c-b);">内环 B-B 轴旋转 (俯仰角): <span id="val-b">0°</span></label>
+            <input type="range" id="angle-b" min="-180" max="180" value="0" step="1">
+        </div>
+        <div class="control-group">
+            <label style="color: var(--c-c);">红色转子 C-C 轴转速: <span id="val-w">50 rad/s</span></label>
+            <input type="range" id="angle-c" min="0" max="150" value="50" step="5">
+        </div>
+
+        <button id="btn-shake" class="btn-green" style="margin-top: 15px;">🚀 启动【定轴性】实验：基座随机颠簸</button>
+        <button id="btn-precess" class="btn-red">⚠️ 施加外力矩干扰 (观察进动)</button>
+        <button id="btn-reset" style="background: #475569; box-shadow: none;">↻ 复位系统</button>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <h1 style="margin-bottom: 20px; font-size: 18px; color: white;">📐 万向节与角动量守恒</h1>
+        
+        <div class="math-card">
+            <h2>1. 结构解剖：力矩的绝对归零</h2>
+            <div class="math-text">
+                仔细观察左侧模型：外环（蓝色）、内环（金色）和红色转子的几何中心**完全重合于一点**。且支架正好支撑在这个中心点上。<br><br>
+                这意味着重力 $m\vec{g}$ 的力臂 $\vec{r} \equiv 0$。因此，无论姿态如何，重力矩 $\vec{M} = \vec{r} \times m\vec{g} = 0$。它是一个理想的**自由陀螺仪**。
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h2 style="color: #10b981;">2. 定轴性 (Gyroscopic Rigidity)</h2>
+            <div class="math-text">
+                根据角动量定理 $\vec{M} = \frac{d\vec{L}}{dt}$：<br>
+                因为合外力矩为 0，所以 $d\vec{L} = 0$，即 $\vec{L} = \text{常矢量}$。<br><br>
+                你可以点击左侧的**【定轴性】实验**。无论外部深蓝色的基座如何剧烈颠簸翻滚，代表角动量的红色转子自转轴，在宇宙绝对空间中的指向**绝对不会改变**！导弹和核潜艇就是靠它在黑暗中辨别方向的。
+            </div>
+        </div>
+
+        <div class="math-card" style="border-color: var(--c-c); background: rgba(239, 68, 68, 0.05);">
+            <h2 style="color: var(--c-c);">3. 进动性 (Precession)</h2>
+            <div class="math-text">
+                如果你强行在内环（金色 B 轴）上施加一个力，试图把它“按倒”会发生什么？<br>
+                点击**【施加外力矩干扰】**。<br><br>
+                你会发现它**并没有顺着你按的方向倒下**，而是沿着外环（蓝色 A 轴）的方向发生了水平的旋转！<br>
+                因为外力矩 $\vec{M}$ 改变了角动量的方向，使得 $\vec{L}$ 的尖端沿着 $\vec{M}$ 的方向移动，产生了“进动”。
+            </div>
+        </div>
+    </div>
+    
+    <div id="hint">🖱️ 提示：按住鼠标左键可 360° 旋转视角，观察万向节解耦结构</div>
+
+    <script>
+        // ================= 1. 初始化 3D 引擎 =================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050510, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 15, 45);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        container.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; 
+        controls.target.set(0, 5, 0); 
+        controls.maxDistance = 100;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+        dirLight.position.set(10, 30, 20);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // 网格底座
+        const gridHelper = new THREE.GridHelper(60, 30, 0x1e293b, 0x0f172a);
+        gridHelper.position.y = -8;
+        scene.add(gridHelper);
+
+        // ================= 2. 完美复刻万向节模型 =================
+        const centerPos = new THREE.Vector3(0, 5, 0);
+
+        // 基础层级架构：BaseFrame -> OuterRing (A轴) -> InnerRing (B轴) -> Rotor (C轴)
+        const baseFrame = new THREE.Group();
+        scene.add(baseFrame);
+
+        // 深蓝色 C 型支架 (Base)
+        const bracketMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.3, roughness: 0.7 });
+        const bracketVert = new THREE.Mesh(new THREE.BoxGeometry(1.5, 20, 2), bracketMat);
+        bracketVert.position.set(-12, 5, 0);
+        const bracketTop = new THREE.Mesh(new THREE.BoxGeometry(13, 1.5, 2), bracketMat);
+        bracketTop.position.set(-6, 14.25, 0);
+        const bracketBot = new THREE.Mesh(new THREE.BoxGeometry(13, 1.5, 2), bracketMat);
+        bracketBot.position.set(-6, -4.25, 0);
+        
+        const bracketBase = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 1, 32), bracketMat);
+        bracketBase.position.set(0, -8, 0);
+        
+        baseFrame.add(bracketVert); baseFrame.add(bracketTop); baseFrame.add(bracketBot); baseFrame.add(bracketBase);
+
+        // 顶底轴承 A-A
+        const axleMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8, roughness: 0.2 });
+        const axleTop = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2, 16), axleMat);
+        axleTop.position.set(0, 13.5, 0);
+        baseFrame.add(axleTop);
+        const axleBot = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2, 16), axleMat);
+        axleBot.position.set(0, -3.5, 0);
+        baseFrame.add(axleBot);
+
+        // 外环 (蓝色, 绕 A-A 竖直轴旋转)
+        const outerRingGroup = new THREE.Group();
+        outerRingGroup.position.copy(centerPos);
+        baseFrame.add(outerRingGroup);
+
+        const outerRingGeo = new THREE.TorusGeometry(8, 0.5, 16, 64);
+        const ringBlueMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, metalness: 0.6, roughness: 0.4 });
+        const outerRing = new THREE.Mesh(outerRingGeo, ringBlueMat);
+        outerRingGroup.add(outerRing);
+
+        // 内外环连接轴 B-B
+        const axleLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2, 16), ringBlueMat);
+        axleLeft.rotation.z = Math.PI / 2; axleLeft.position.set(-8, 0, 0);
+        outerRingGroup.add(axleLeft);
+        const axleRight = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2, 16), ringBlueMat);
+        axleRight.rotation.z = Math.PI / 2; axleRight.position.set(8, 0, 0);
+        outerRingGroup.add(axleRight);
+
+        // 内环 (金色, 绕 B-B 水平轴旋转)
+        const innerRingGroup = new THREE.Group();
+        outerRingGroup.add(innerRingGroup); // 嵌套
+
+        const innerRingGeo = new THREE.TorusGeometry(6.5, 0.5, 16, 64);
+        const ringGoldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8, roughness: 0.2 });
+        const innerRing = new THREE.Mesh(innerRingGeo, ringGoldMat);
+        innerRing.rotation.x = Math.PI / 2; // 默认放平
+        innerRingGroup.add(innerRing);
+
+        // 内环与转子连接轴 C-C (现在它在Z轴方向上)
+        const axleFront = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2, 16), new THREE.MeshStandardMaterial({color: 0xd1d5db, metalness:0.8}));
+        axleFront.rotation.x = Math.PI / 2; axleFront.position.set(0, 0, 6.5);
+        innerRingGroup.add(axleFront);
+        const axleBack = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2, 16), new THREE.MeshStandardMaterial({color: 0xd1d5db, metalness:0.8}));
+        axleBack.rotation.x = Math.PI / 2; axleBack.position.set(0, 0, -6.5);
+        innerRingGroup.add(axleBack);
+
+        // 红色球形转子 (绕 C-C 轴自转)
+        const rotorGroup = new THREE.Group();
+        innerRingGroup.add(rotorGroup);
+
+        const rotorGeo = new THREE.SphereGeometry(4.5, 32, 32);
+        const rotorMat = new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.3, roughness: 0.3 });
+        const rotor = new THREE.Mesh(rotorGeo, rotorMat);
+        rotorGroup.add(rotor);
+
+        // 给红色转子加上黑色赤道线，方便看清自转
+        const eqGeo = new THREE.TorusGeometry(4.51, 0.1, 8, 64);
+        const eqMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const equator = new THREE.Mesh(eqGeo, eqMat);
+        equator.rotation.x = Math.PI / 2;
+        rotorGroup.add(equator);
+
+        // ================= 3. 轴系标签 =================
+        function createLabel(text, color) {
+            const div = document.createElement('div');
+            div.className = 'label-3d'; div.innerHTML = text; div.style.color = color;
+            return new THREE.CSS2DObject(div);
+        }
+        
+        // A 轴 (固定在基座)
+        const labelA_top = createLabel('A', '#60a5fa'); labelA_top.position.set(0, 15, 0); baseFrame.add(labelA_top);
+        const labelA_bot = createLabel('A', '#60a5fa'); labelA_bot.position.set(0, -5, 0); baseFrame.add(labelA_bot);
+        
+        // B 轴 (跟随外环)
+        const labelB_L = createLabel('B', '#facc15'); labelB_L.position.set(-9, 0, 0); outerRingGroup.add(labelB_L);
+        const labelB_R = createLabel('B', '#facc15'); labelB_R.position.set(9, 0, 0); outerRingGroup.add(labelB_R);
+
+        // C 轴 (跟随内环)
+        const labelC_F = createLabel('C', '#ef4444'); labelC_F.position.set(0, 0, 7.5); innerRingGroup.add(labelC_F);
+        const labelC_B = createLabel('C', '#ef4444'); labelC_B.position.set(0, 0, -7.5); innerRingGroup.add(labelC_B);
+
+        // ================= 4. 控制逻辑与状态机 =================
+        let manualA = 0;
+        let manualB = 0;
+        let w_rotor = 50; 
+        
+        let isShaking = false;
+        let isPrecessing = false;
+        let shakeTime = 0;
+        let precessAngle = 0;
+
+        // UI 绑定
+        const s_a = document.getElementById('angle-a');
+        const s_b = document.getElementById('angle-b');
+        const s_c = document.getElementById('angle-c');
+
+        [s_a, s_b].forEach(slider => {
+            slider.addEventListener('input', (e) => {
+                isShaking = false; isPrecessing = false; // 手动操作打断实验
+                let val = parseFloat(e.target.value);
+                let id = e.target.id.split('-')[1];
+                document.getElementById(`val-${id}`).innerText = val + "°";
+                
+                if (id === 'a') manualA = val * Math.PI / 180;
+                if (id === 'b') manualB = val * Math.PI / 180;
+            });
+        });
+
+        s_c.addEventListener('input', (e) => {
+            w_rotor = parseFloat(e.target.value);
+            document.getElementById('val-w').innerText = w_rotor + " rad/s";
+        });
+
+        document.getElementById('btn-shake').addEventListener('click', () => {
+            isShaking = true;
+            isPrecessing = false;
+            shakeTime = 0;
+            
+            // 将外环内环手动设定回0，以便观察基座晃动时的自动补偿
+            manualA = 0; manualB = 0;
+            s_a.value = 0; s_b.value = 0;
+            document.getElementById('val-a').innerText = "0° (自动)";
+            document.getElementById('val-b').innerText = "0° (自动)";
+        });
+
+        document.getElementById('btn-precess').addEventListener('click', () => {
+            isPrecessing = true;
+            isShaking = false;
+            baseFrame.rotation.set(0,0,0); // 基座稳定
+            
+            // 恢复内环倾角，准备进动
+            manualB = 30 * Math.PI / 180;
+            s_b.value = 30;
+            document.getElementById('val-b').innerText = "30° (受干扰)";
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            isShaking = false;
+            isPrecessing = false;
+            baseFrame.rotation.set(0,0,0);
+            manualA = 0; manualB = 0;
+            s_a.value = 0; s_b.value = 0;
+            document.getElementById('val-a').innerText = "0°";
+            document.getElementById('val-b').innerText = "0°";
+            outerRingGroup.rotation.y = 0;
+            innerRingGroup.rotation.x = 0;
+        });
+
+        // ================= 5. 渲染循环与物理动力学 =================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); 
+            
+            let dt = clock.getDelta();
+            if (dt > 0.1) dt = 0.1;
+
+            // 红色转子高速自转 (绕内环 Z 轴)
+            rotorGroup.rotation.z += w_rotor * dt;
+
+            if (isShaking) {
+                // 定轴性实验：基座疯狂晃动
+                shakeTime += dt * 2.5;
+                
+                // 模拟波浪中的船只摇晃 (Roll, Pitch, Yaw 耦合)
+                let basePitch = Math.sin(shakeTime) * 0.5; // X轴摇晃
+                let baseYaw = Math.cos(shakeTime * 0.7) * 0.8; // Y轴摇晃
+                
+                baseFrame.rotation.x = basePitch;
+                baseFrame.rotation.y = baseYaw;
+                
+                // 【核心物理补偿】：由于角动量守恒，万向节的外环和内环会被动旋转，以抵消基座的摇晃，保持转子绝对方向不变！
+                outerRingGroup.rotation.y = -baseYaw;
+                innerRingGroup.rotation.x = -basePitch;
+                
+            } else if (isPrecessing) {
+                // 进动实验：外力矩导致偏航角不断改变
+                precessAngle += (w_rotor > 0 ? 100 / w_rotor : 0) * dt; // 转速越快，进动越慢 (Omega = M/Jw)
+                outerRingGroup.rotation.y = precessAngle;
+                innerRingGroup.rotation.x = manualB; 
+                
+                s_a.value = ((precessAngle * 180 / Math.PI) % 360).toFixed(0);
+                document.getElementById('val-a').innerText = s_a.value + "° (进动中)";
+
+            } else {
+                // 手动拖拽模式
+                baseFrame.rotation.set(0,0,0);
+                outerRingGroup.rotation.y = manualA;
+                innerRingGroup.rotation.x = manualB;
+            }
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        // ================= 6. 开发者截图插件 =================
+        window.addEventListener('keydown', function(e) {
+            if(e.key === 'p' || e.key === 'P') {
+                const canvas = document.querySelector('canvas');
+                const dataURL = canvas.toDataURL('image/png');
+                let safeTitle = document.title.replace(/[\s\(\)\[\]\/:*?"<>|（）]/g, '_').replace(/_+/g, '_'); 
+                let finalFileName = 'cover_' + safeTitle + '.png';
+                const link = document.createElement('a');
+                link.download = finalFileName;
+                link.href = dataURL;
+                link.click();
+                const hint = document.createElement('div');
+                hint.innerHTML = '📸 截图成功！文件名已净化为：<br><span style="color:#d32f2f;">' + finalFileName + '</span>';
+                hint.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#00f2fe; color:#000; padding:15px 25px; border-radius:8px; font-weight:bold; z-index:99999; text-align:center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);';
+                document.body.appendChild(hint);
+                setTimeout(() => hint.remove(), 4000);
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        animate();
+    </script>
+</body>
+</html>

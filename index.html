@@ -126,6 +126,7 @@ const mindmapMapping = {
     'dynamics': ['node-part1', 'node-ch2'],
     'dynamicsSimulation': ['node-part1', 'node-ch2'],
     'rigidBody': ['node-part1', 'node-ch3'],
+    'rigidBodySimulation': ['node-part1', 'node-ch3'],
     'vibrationWave': ['node-part1', 'node-ch5'],
     'thermoPart': ['node-part2'],
     'gasTheory': ['node-part2', 'node-ch6'],
@@ -205,7 +206,7 @@ function openSidebarPanel(type) {
         panelTitle.textContent = '质点系动力学课件';
         const iframe = document.createElement('iframe');
         iframe.className = 'ppt-frame';
-        iframe.src = encodeURI('第二章 质点系动力学.pdf'); 
+        iframe.src = encodeURI('第二章 质点（系）动力学.pdf'); 
         panelBody.appendChild(iframe);
     }
     else if (type === 'video_dyn') {
@@ -216,6 +217,13 @@ function openSidebarPanel(type) {
             { title: "2.3 功与动能定理", src: "动能定理.mp4" }
         ];
         buildVideoList(videoData, panelBody);
+    }
+    else if (type === 'ppt_rigid') {
+        panelTitle.textContent = '刚体动力学课件';
+        const iframe = document.createElement('iframe');
+        iframe.className = 'ppt-frame';
+        iframe.src = encodeURI('第三章 刚体的定轴转动.pdf');
+        panelBody.appendChild(iframe);
     }
     
     panel.classList.add('open');
@@ -497,11 +505,52 @@ document.addEventListener('click', function(e) {
             <div class="title">第3章 刚体动力学</div>
             <div class="section-menu">
                 <button class="menu-btn" onclick="openInCurrentWindow('刚体动力学理论知识框架', '刚体动力学知识图谱.html')">理论知识框架</button>
-                <button class="menu-btn" onclick="alert('模块待完善')">教学课件</button>
-                <button class="menu-btn" onclick="alert('模块待完善')">仿真交互模型</button>
+                <button class="menu-btn" onclick="openSidebarPanel('ppt_rigid')">教学课件</button>
+                <button class="menu-btn" onclick="showPage('rigidBodySimulation')">仿真交互模型</button>
                 <button class="menu-btn" onclick="alert('模块待完善')">教学视频</button>
             </div>
             <button class="back-btn" onclick="goBack('mechanics')">返回力学篇</button>
+        </div>
+    </div>
+
+    <div id="rigidBodySimulation" class="page">
+        <div class="center-container" style="justify-content: flex-start; margin-top: 80px;">
+            <div class="title" style="margin-bottom: 30px;">刚体动力学物理引擎推演库</div>
+            <div class="btn-group">
+                <button class="external-btn" onclick="openInCurrentWindow('均匀细棒转动惯量', '均匀细棒转动惯量.html')">
+                    <div class="btn-cover" style="background-image: url('images/均匀细棒转动惯量.png');"></div>
+                    <div class="btn-info">均匀细棒转动惯量<br><span>(一维连续分布刚体)</span></div>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('圆盘转动惯量', '圆盘转动惯量.html')">
+                    <div class="btn-cover" style="background-image: url('images/圆盘转动惯量.png');"></div>
+                    <div class="btn-info">圆盘转动惯量<br><span>(二维面分布积分)</span></div>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('圆环转动惯量', '圆环转动惯量.html')">
+                    <div class="btn-cover" style="background-image: url('images/圆环转动惯量.png');"></div>
+                    <div class="btn-info">圆环转动惯量<br><span>(一维连续分布刚体)</span></div>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('正方形体转动惯量', '正方形体转动惯量.html')">
+                    <div class="btn-cover" style="background-image: url('images/正方形体转动惯量.png');"></div>
+                    <div class="btn-info">正方形体转动惯量<br><span>(二重积分推导)</span></div>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('自由陀螺仪(回转仪)', '回转仪.html')">
+                    <div class="btn-cover" style="background-image: url('images/回转仪.png');"></div>
+                    <div class="btn-info">自由陀螺仪(回转仪)<br><span>(定轴性与进动性)</span></div>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('阿特伍德双物块系统', '阿特伍德双物块系统.html')">
+                    <div class="btn-cover" style="background-image: url('images/阿特伍德双物块系统.png');"></div>
+                    <div class="btn-info">阿特伍德双物块系统<br><span>(考虑滑轮转动惯量)</span></div>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('滑轮刚体动力学', '滑轮刚体动力学.html')">
+                    <div class="btn-cover" style="background-image: url('images/滑轮刚体动力学.png');"></div>
+                    <div class="btn-info">滑轮刚体动力学<br><span>(定滑轮隔离法)</span></div>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('恒定力矩圆周运动', '恒定力矩圆周运动模型立体门.html')">
+                    <div class="btn-cover" style="background-image: url('images/恒定力矩圆周运动模型立体门.png');"></div>
+                    <div class="btn-info">恒定力矩圆周运动<br><span>(立体门旋转模型)</span></div>
+                </button>
+            </div>
+            <button class="back-btn" onclick="goBack('rigidBody')">返回上一级</button>
         </div>
     </div>
 

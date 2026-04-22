@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 均匀细棒转动惯量推演实验室</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' },
+            startup: {
+                pageReady: () => {
+                    return MathJax.startup.defaultPageReady().then(() => {
+                        if(typeof updateMath === 'function') updateMath();
+                    });
+                }
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.92); --primary: #00f2fe; --text: #e2e8f0; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.8); backdrop-filter: blur(12px); border-radius: 12px; z-index: 10; padding: 20px; box-sizing: border-box; }
+        
+        /* 左侧概念控制区 */
+        #controls { 
+            top: 20px; left: 20px; width: 340px; 
+            max-height: calc(100vh - 40px); /* 限制最大高度 */
+            overflow-y: auto; /* 超出则出现纵向滑动条 */
+        }
+        /* 左侧滑动条样式定制 */
+        #controls::-webkit-scrollbar { width: 6px; }
+        #controls::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+
+        h1 { margin: 0; font-size: 18px; color: var(--primary); }
+        .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(0, 242, 254, 0.2); padding-bottom: 10px; margin-bottom: 15px; }
+        
+        .control-group { margin-bottom: 15px; }
+        label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; font-weight: 600; color: #94a3b8; }
+        select { width: 100%; padding: 8px; border-radius: 6px; background: #1a1a2e; color: #fff; border: 1px solid #334; cursor: pointer; outline: none; margin-bottom: 5px;}
+        input[type=range] { width: 100%; accent-color: var(--primary); cursor: pointer; }
+        
+        .slider-container { display: none; background: rgba(250, 204, 21, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #facc15; margin-bottom: 15px; margin-top: 10px;}
+        .slider-container label { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; color: #facc15; margin-bottom: 8px; }
+        .slider-container input[type=range] { accent-color: #facc15; }
+
+        .toggle-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; margin-top: 15px; }
+        .toggle-label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #cbd5e1; cursor: pointer; }
+        .toggle-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); }
+
+        button { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 13px; width: 100%; box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3); }
+        button:hover { background: #00c8d2; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5); }
+
+        /* 右侧推导区 & 折叠动画 */
+        #math-panel { 
+            top: 20px; right: 20px; width: 520px; max-height: calc(100vh - 40px); overflow-y: auto; 
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease; 
+        }
+        #math-panel.collapsed { transform: translateX(120%); opacity: 0; pointer-events: none; }
+        
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        .derivation-step { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 18px; margin-bottom: 12px; border-left: 4px solid #334; }
+        .step-header { font-size: 15px; font-weight: bold; color: var(--primary); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+
+        #close-math-btn { width: auto; background: rgba(255,255,255,0.1); box-shadow: none; color: #cbd5e1; padding: 5px 10px; font-size: 12px; }
+        #close-math-btn:hover { background: rgba(239, 68, 68, 0.8); color: white; }
+
+        /* 3D 标签样式 */
+        .label-3d { font-weight: bold; font-size: 15px; pointer-events: none; text-shadow: 2px 2px 4px #000; }
+        .axis-label { font-family: 'Arial Black', sans-serif; font-size: 18px; }
+        .math-italic { font-style: italic; font-family: 'Times New Roman', serif; font-size: 18px; }
+        .label-dm { color: #ff3366; font-size: 16px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255, 51, 102, 0.5); }
+        .label-center { color: #facc15; font-size: 14px; background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 4px; border: 1px solid #facc15; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <div class="header-box">
+            <h1>⚙️ 物理代数概念模型</h1>
+        </div>
+
+        <div style="font-size: 13px; color: #aed9e0; margin-bottom: 15px; line-height: 1.5;">
+            本实验室为纯代数推演。请结合 3D 空间中的微元状态，观察不同转轴下积分域的演变。
+        </div>
+
+        <div class="control-group">
+            <label>转轴位置设定 (依据题干)</label>
+            <select id="axis-pos">
+                <option value="center">(1) 转轴通过棒的中心</option>
+                <option value="end">(2) 转轴通过棒的一端</option>
+                <option value="offset">(3) 转轴距中心距离为 h</option>
+            </select>
+        </div>
+
+        <div id="h-slider-container" class="slider-container">
+            <label>偏离中心距离参量 (h)</label>
+            <input type="range" id="input-h" min="0" max="4" value="2.0" step="0.1">
+        </div>
+
+        <div class="control-group">
+            <label>细棒总长度比例参量 (l)</label>
+            <input type="range" id="input-l" min="4" max="12" value="8" step="0.5">
+        </div>
+        <div class="control-group">
+            <label>细棒总质量参量 (m)</label>
+            <input type="range" id="input-m" min="1" max="10" value="4" step="0.5">
+        </div>
+
+        <div class="toggle-group">
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-spin" checked> 开启宏观系统旋转
+            </label>
+            <label class="toggle-label" style="color: #ff3366;">
+                <input type="checkbox" id="toggle-dm" checked> 显示静态质元及分析标注
+            </label>
+        </div>
+
+        <div style="background:rgba(0,0,0,0.3); padding:15px; border-radius:8px; border-left:4px solid var(--primary); margin-bottom: 15px;">
+            <div style="font-size:12px; color:#94a3b8;">理论代数推导结论</div>
+            <div id="result-text" style="font-size:20px; font-family:'Times New Roman', serif; font-weight:bold; margin-top:5px; color:var(--primary); letter-spacing: 1px;">
+                I = 1/12 m l<sup>2</sup>
+            </div>
+        </div>
+
+        <button id="toggle-math-btn" style="background: #10b981; box-shadow: 0 4px 15px rgba(16,185,129,0.3);">📘 显示/隐藏数学推导面板</button>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <div class="header-box">
+            <h1 id="math-title">📐 细棒转动惯量微元推导</h1>
+            <button id="close-math-btn">✖ 收起</button>
+        </div>
+        <div id="math-content" style="font-size: 14px; line-height: 1.7; color: #e2e8f0;">
+            </div>
+    </div>
+
+    <script>
+        // ================= 1. 初始化引擎 =================
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050a15, 0.025);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(10, -18, 15);
+        camera.up.set(0, 0, 1); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 0, 0);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+        sun.position.set(10, 10, 20);
+        scene.add(sun);
+
+        // ================= 2. 构建 3D 几何实体 =================
+        let isSpinning = true;
+        let l_len = 8.0;      
+        let h_dist = 2.0;     
+        
+        const rodRadius = 0.2;
+        
+        const rotatingGroup = new THREE.Group(); 
+        const dmGroup = new THREE.Group(); 
+        scene.add(rotatingGroup);
+        rotatingGroup.add(dmGroup); 
+
+        let visualElements = []; 
+        let rotationAxis;
+
+        function createLabel(text, className, color="#fff") {
+            const div = document.createElement('div');
+            div.className = `label-3d ${className}`;
+            div.innerHTML = text;
+            div.style.color = color;
+            return new THREE.CSS2DObject(div);
+        }
+
+        // 彻底清理并销毁对象的视觉残留
+        function clearVisuals() {
+            scene.traverse((child) => {
+                if (child.isCSS2DObject && child.element && child.element.parentNode) {
+                    child.element.parentNode.removeChild(child.element);
+                }
+            });
+            
+            while(rotatingGroup.children.length > 0) rotatingGroup.remove(rotatingGroup.children[0]);
+            while(dmGroup.children.length > 0) dmGroup.remove(dmGroup.children[0]);
+            
+            visualElements.forEach(el => scene.remove(el));
+            visualElements = [];
+            
+            if(rotationAxis) scene.remove(rotationAxis);
+        }
+
+        function buildScene() {
+            clearVisuals();
+            const axisType = document.getElementById('axis-pos').value;
+            
+            let centerX = 0;
+            if (axisType === 'end') centerX = l_len / 2;
+            else if (axisType === 'offset') centerX = h_dist;
+
+            // --- a. 绝对静态坐标系 ---
+            const axesLength = l_len * 1.2;
+            const axesHelper = new THREE.AxesHelper(axesLength);
+            visualElements.push(axesHelper);
+            scene.add(axesHelper);
+
+            const labX = createLabel('X', 'axis-label', '#ff4444'); labX.position.set(axesLength, 0, 0);
+            const labY = createLabel('Y', 'axis-label', '#44ff44'); labY.position.set(0, axesLength, 0);
+            const labZ = createLabel('Z (转轴)', 'axis-label', '#4444ff'); labZ.position.set(0, 0, axesLength * 0.8);
+            visualElements.push(labX, labY, labZ);
+            scene.add(labX); scene.add(labY); scene.add(labZ);
+
+            // --- b. 宏观均匀细棒 (挂载在旋转组) ---
+            const rodGeo = new THREE.CylinderGeometry(rodRadius, rodRadius, l_len, 32);
+            rodGeo.rotateZ(Math.PI / 2); 
+            const rodMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, transparent: true, opacity: 0.7, metalness: 0.3 });
+            const rodMesh = new THREE.Mesh(rodGeo, rodMat);
+            rodMesh.position.set(centerX, 0, 0);
+            rotatingGroup.add(rodMesh);
+
+            const dotGeo = new THREE.SphereGeometry(rodRadius * 1.5, 16, 16);
+            const centerDot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
+            centerDot.position.set(centerX, 0, 0);
+            rotatingGroup.add(centerDot);
+
+            const label_C = createLabel('C', 'label-center');
+            label_C.position.set(0, rodRadius * 3, 0); 
+            centerDot.add(label_C);
+
+            rotatingGroup.add(dmGroup); 
+
+            // --- c. 细棒静态微元 (dm) 及分析标注 ---
+            const dx = 0.5; 
+            const dmGeo = new THREE.CylinderGeometry(rodRadius * 1.15, rodRadius * 1.15, dx, 32);
+            dmGeo.rotateZ(Math.PI / 2);
+            const dmMat = new THREE.MeshBasicMaterial({ color: 0xff3366 });
+            const dmMesh = new THREE.Mesh(dmGeo, dmMat);
+            
+            const dmPosX = centerX + (l_len * 0.25);
+            dmMesh.position.set(dmPosX, 0, 0);
+            dmGroup.add(dmMesh);
+
+            // 极简标注：纯粹的 dm 与 dx
+            const label_dm = createLabel('dm', 'label-dm');
+            label_dm.position.set(0, -rodRadius * 3, 0);
+            dmMesh.add(label_dm);
+
+            const label_dx = createLabel('dx', 'math-italic', '#ff3366');
+            label_dx.position.set(0, rodRadius * 2.5, 0);
+            dmMesh.add(label_dx);
+
+            // x 距离连线及标签
+            const xLineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), dmMesh.position]);
+            const xLineMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.2, gapSize: 0.1 });
+            const xLine = new THREE.Line(xLineGeo, xLineMat);
+            xLine.computeLineDistances();
+            dmGroup.add(xLine);
+            
+            const label_x = createLabel('x', 'math-italic', '#ffffff');
+            label_x.position.set(dmPosX / 2, -rodRadius * 2, 0);
+            dmGroup.add(label_x);
+
+            // h 距离箭头及标签 (挂载在 dmGroup 中)
+            if (axisType === 'offset' && h_dist > 0) {
+                const dirX = new THREE.Vector3(1, 0, 0);
+                const arrowH = new THREE.ArrowHelper(dirX, new THREE.Vector3(0,0,rodRadius*3), h_dist, 0xfacc15, 0.4, 0.2);
+                dmGroup.add(arrowH);
+                
+                const label_h = createLabel('h', 'math-italic', '#facc15');
+                label_h.position.set(h_dist/2, 0, rodRadius*4);
+                arrowH.add(label_h);
+            }
+
+            // --- d. Z 轴光柱 (绝对静止) ---
+            const axisGeo = new THREE.CylinderGeometry(0.04, 0.04, l_len * 1.5, 12);
+            rotationAxis = new THREE.Mesh(axisGeo, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+            rotationAxis.rotation.x = Math.PI / 2; 
+            scene.add(rotationAxis);
+
+            // 初始化时执行一次严格显隐同步
+            syncDmVisibility();
+            
+            updateLogic();
+            updateMath();
+        }
+
+        // ================= 3. 数学推导引擎 =================
+        function updateLogic() {
+            const axisType = document.getElementById('axis-pos').value;
+            let resultText = "";
+
+            if (axisType === 'center') {
+                resultText = "I = 1/12 m l<sup>2</sup>";
+            } else if (axisType === 'end') {
+                resultText = "I = 1/3 m l<sup>2</sup>";
+            } else if (axisType === 'offset') {
+                resultText = "I = 1/12 m l<sup>2</sup> + m h<sup>2</sup>";
+            }
+
+            document.getElementById('result-text').innerHTML = resultText;
+        }
+
+        function updateMath() {
+            const axisType = document.getElementById('axis-pos').value;
+            const content = document.getElementById('math-content');
+            let html = "";
+
+            const commonStep1 = `
+                <div class="derivation-step">
+                    <div class="step-header">1. 构建线密度与微元</div>
+                    设均匀细棒的质量为 $m$，长度为 $l$。作为一维线状物体，其线密度 $\\lambda$ 为常量：
+                    $$ \\lambda = \\frac{m}{l} $$
+                    在坐标 $x$ 处取固定长度微元 $dx$（图中粉红色标注），该微元的质量 $dm$ 为：
+                    $$ dm = \\lambda dx = \\frac{m}{l} dx $$
+                </div>`;
+
+            if (axisType === 'center') {
+                html = commonStep1 + `
+                    <div class="derivation-step">
+                        <div class="step-header">2. 确定积分边界</div>
+                        (1) 转轴通过棒的中心并与棒垂直：<br>
+                        我们将转轴(Z轴)设为绝对原点 $x=0$，细棒对称横跨在 X 轴上。此时，整根细棒的积分区间为 $\\left[ -\\frac{l}{2}, \\frac{l}{2} \\right]$。
+                    </div>
+                    <div class="derivation-step">
+                        <div class="step-header">3. 积分求解转动惯量 $I_C$</div>
+                        任意微元到转轴的几何距离为 $x$。根据转动惯量定义 $I = \\int r^2 dm$：
+                        $$ I_C = \\int_{-l/2}^{l/2} x^2 \\left(\\frac{m}{l} dx\\right) = \\frac{m}{l} \\int_{-l/2}^{l/2} x^2 dx $$
+                        计算定积分：
+                        $$ I_C = \\frac{m}{l} \\left[ \\frac{x^3}{3} \\right]_{-l/2}^{l/2} = \\frac{m}{l} \\left( \\frac{l^3}{24} - \\left(-\\frac{l^3}{24}\\right) \\right) = \\frac{1}{12}ml^2 $$
+                    </div>
+                `;
+            } else if (axisType === 'end') {
+                html = commonStep1 + `
+                    <div class="derivation-step">
+                        <div class="step-header">2. 确定积分边界</div>
+                        (2) 转轴通过棒的一端并与棒垂直：<br>
+                        我们将转轴(Z轴)设为原点 $x=0$，细棒整体向正半轴延伸。此时，细棒的物理积分区间为 $[0, l]$。
+                    </div>
+                    <div class="derivation-step">
+                        <div class="step-header">3. 积分求解转动惯量 $I_E$</div>
+                        微元到转轴的距离仍然为坐标 $x$：
+                        $$ I_E = \\int_{0}^{l} x^2 \\left(\\frac{m}{l} dx\\right) = \\frac{m}{l} \\int_{0}^{l} x^2 dx $$
+                        代入上下限进行计算：
+                        $$ I_E = \\frac{m}{l} \\left[ \\frac{x^3}{3} \\right]_{0}^{l} = \\frac{m}{l} \\left( \\frac{l^3}{3} - 0 \\right) = \\frac{1}{3}ml^2 $$
+                    </div>
+                `;
+            } else if (axisType === 'offset') {
+                html = commonStep1 + `
+                    <div class="derivation-step">
+                        <div class="step-header">2. 确定偏置积分边界</div>
+                        (3) 转轴距质心距离为 $h$：<br>
+                        设旋转轴为原点 $x=0$，则细棒的几何质心 $C$ 位于 $x=h$。于是细棒左右两端的绝对坐标分别为 $h - \\frac{l}{2}$ 和 $h + \\frac{l}{2}$。<br>
+                        积分域变为 $\\left[h - \\frac{l}{2}, h + \\frac{l}{2}\\right]$。
+                    </div>
+                    <div class="derivation-step">
+                        <div class="step-header">3. 代数展开与积分求解</div>
+                        $$ I = \\int_{h-l/2}^{h+l/2} x^2 \\left(\\frac{m}{l} dx\\right) = \\frac{m}{l} \\left[ \\frac{x^3}{3} \\right]_{h-l/2}^{h+l/2} $$
+                        $$ I = \\frac{m}{3l} \\left[ \\left(h+\\frac{l}{2}\\right)^3 - \\left(h-\\frac{l}{2}\\right)^3 \\right] $$
+                        利用立方差展开，内部项交叉抵消后得到 $3h^2l + \\frac{l^3}{4}$：
+                        $$ I = \\frac{m}{3l} \\left( 3h^2l + \\frac{l^3}{4} \\right) = mh^2 + \\frac{1}{12}ml^2 $$
+                    </div>
+                    <div class="derivation-step" style="border-left-color: #facc15; background: rgba(250, 204, 21, 0.05);">
+                        <div class="step-header" style="color:#facc15;">💡 物理学大统一：平行轴定理验证</div>
+                        我们将最终结果调换顺序：
+                        $$ I = \\frac{1}{12}ml^2 + mh^2 = I_C + mh^2 $$
+                        这完美且严密地验证了<b>平行轴定理</b>！已知刚体绕质心轴的转动惯量 $I_C$，要求绕任意平行轴的转动惯量，只需加上“总质量 $\\times$ 距离平方” ($mh^2$) 即可，无需重新积分计算。
+                    </div>
+                `;
+            }
+
+            content.innerHTML = html;
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise([content]);
+            }
+        }
+
+        // ================= 4. 渲染动画循环 =================
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // 宏观系统及其挂载的微元、标签作为刚体整体旋转
+            if (isSpinning) {
+                rotatingGroup.rotation.z += 0.015; 
+            }
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        // ================= 5. 三重锁死显示/隐藏同步控制 =================
+        function syncDmVisibility() {
+            const isVisible = document.getElementById('toggle-dm').checked;
+            dmGroup.visible = isVisible; 
+            
+            dmGroup.traverse((child) => {
+                // 1. 强制阻断 ThreeJS 对象自身的可见性
+                child.visible = isVisible; 
+                
+                if (child.element) {
+                    // 2. 强行设置 display
+                    child.element.style.display = isVisible ? 'block' : 'none';
+                    // 3. 强行设置 opacity 和 visibility 双重保险
+                    child.element.style.opacity = isVisible ? '1' : '0';
+                    child.element.style.visibility = isVisible ? 'visible' : 'hidden';
+                }
+            });
+        }
+
+        // ================= 6. 事件响应 & UI 控制 =================
+        document.getElementById('axis-pos').addEventListener('change', (e) => {
+            const axisType = e.target.value;
+            const slider = document.getElementById('h-slider-container');
+            if (axisType === 'offset') {
+                slider.style.display = 'block';
+            } else {
+                slider.style.display = 'none';
+            }
+            buildScene();
+        });
+
+        document.getElementById('input-l').addEventListener('input', (e) => {
+            l_len = parseFloat(e.target.value);
+            if (h_dist > l_len / 2) {
+                h_dist = l_len / 2;
+                document.getElementById('input-h').value = h_dist;
+            }
+            buildScene();
+        });
+
+        document.getElementById('input-h').addEventListener('input', (e) => {
+            h_dist = parseFloat(e.target.value);
+            buildScene();
+        });
+
+        document.getElementById('input-m').addEventListener('input', (e) => {
+            updateLogic();
+            updateMath(); 
+        });
+
+        document.getElementById('toggle-spin').addEventListener('change', (e) => { 
+            isSpinning = e.target.checked; 
+        });
+        
+        // 绑定终极显隐函数
+        document.getElementById('toggle-dm').addEventListener('change', syncDmVisibility);
+
+        const mathPanel = document.getElementById('math-panel');
+        document.getElementById('toggle-math-btn').addEventListener('click', () => { mathPanel.classList.toggle('collapsed'); });
+        document.getElementById('close-math-btn').addEventListener('click', () => { mathPanel.classList.add('collapsed'); });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if(e.key.toLowerCase() === 'p') {
+                const link = document.createElement('a');
+                link.download = 'moment_of_inertia_rod.png';
+                link.href = renderer.domElement.toDataURL();
+                link.click();
+            }
+        });
+
+        if (document.getElementById('axis-pos').value === 'offset') {
+            document.getElementById('h-slider-container').style.display = 'block';
+        }
+        buildScene();
+        animate();
+    </script>
+</body>
+</html>

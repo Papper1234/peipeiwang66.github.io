@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 转动惯量全解构实验室 (高阶推导版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' },
+            startup: {
+                pageReady: () => {
+                    return MathJax.startup.defaultPageReady().then(() => {
+                        if(typeof updateMath === 'function') updateMath();
+                    });
+                }
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.92); --primary: #00f2fe; --text: #e2e8f0; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.8); backdrop-filter: blur(12px); border-radius: 12px; z-index: 10; padding: 20px; box-sizing: border-box; }
+        
+        /* 左侧控制区 */
+        #controls { top: 20px; left: 20px; width: 340px; }
+        h1 { margin: 0; font-size: 18px; color: var(--primary); }
+        .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(0, 242, 254, 0.2); padding-bottom: 10px; margin-bottom: 15px; }
+        
+        .control-group { margin-bottom: 18px; }
+        label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; font-weight: 600; color: #94a3b8; }
+        select { width: 100%; padding: 8px; border-radius: 6px; background: #1a1a2e; color: #fff; border: 1px solid #334; cursor: pointer; outline: none;}
+        input[type=range] { width: 100%; accent-color: var(--primary); cursor: pointer; }
+        button { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 13px; width: 100%; box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3); }
+        button:hover { background: #00c8d2; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5); }
+
+        /* 右侧推导区 & 折叠动画 */
+        #math-panel { 
+            top: 20px; right: 20px; width: 550px; max-height: calc(100vh - 40px); overflow-y: auto; 
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease; 
+        }
+        #math-panel.collapsed { transform: translateX(120%); opacity: 0; pointer-events: none; }
+        
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        .derivation-step { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 18px; margin-bottom: 12px; border-left: 4px solid #334; }
+        .step-header { font-size: 15px; font-weight: bold; color: var(--primary); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+
+        #close-math-btn { width: auto; background: rgba(255,255,255,0.1); box-shadow: none; color: #cbd5e1; padding: 5px 10px; font-size: 12px; }
+        #close-math-btn:hover { background: rgba(239, 68, 68, 0.8); color: white; }
+
+        /* 3D 标签样式 */
+        .label-3d { font-weight: bold; font-size: 16px; pointer-events: none; text-shadow: 2px 2px 4px #000; }
+        .axis-label { font-family: 'Arial Black', sans-serif; font-size: 20px; }
+        .math-italic { font-style: italic; font-family: 'Times New Roman', serif; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <div class="header-box">
+            <h1>⚙️ 实验模型配置</h1>
+        </div>
+        
+        <div class="control-group">
+            <label>选择研究对象</label>
+            <select id="target-obj">
+                <option value="plate">正方形薄板 (2D)</option>
+                <option value="cube">均质正方体 (3D)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>旋转轴位置 (始终以Z轴为转轴)</label>
+            <select id="axis-pos">
+                <option value="center">穿过几何中心</option>
+                <option value="edge">沿物体的一条边/棱</option>
+            </select>
+        </div>
+        <div class="control-group" style="margin-top: 25px;">
+            <label>几何边长 (a): <span id="val-a" style="color:var(--primary)">6.0 m</span></label>
+            <input type="range" id="input-a" min="2" max="10" value="6" step="0.2">
+        </div>
+        <div class="control-group">
+            <label>总质量 (M): <span id="val-m" style="color:var(--primary)">5.0 kg</span></label>
+            <input type="range" id="input-m" min="1" max="50" value="5" step="1">
+        </div>
+
+        <div style="background:rgba(0,0,0,0.3); padding:15px; border-radius:8px; border-left:4px solid var(--primary); margin-bottom: 15px;">
+            <div style="font-size:12px; color:#94a3b8;">当前宏观转动惯量</div>
+            <div id="result-text" style="font-size:24px; font-weight:bold; margin-top:5px; color:var(--primary);">I = 30.00 kg·m²</div>
+        </div>
+
+        <button id="toggle-math-btn" style="background: #10b981; box-shadow: 0 4px 15px rgba(16,185,129,0.3);">📘 显示/隐藏数学推导面板</button>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <div class="header-box">
+            <h1>📐 动力学高阶推导</h1>
+            <button id="close-math-btn">✖ 收起面板</button>
+        </div>
+        <div id="math-content" style="font-size: 14px; line-height: 1.7; color: #e2e8f0;">
+            </div>
+    </div>
+
+    <script>
+        // ================= 1. 初始化引擎 =================
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050a15, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(16, 14, 22);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 0, 0);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+        sun.position.set(15, 25, 15);
+        scene.add(sun);
+
+        // ================= 2. 核心构建体系 =================
+        let mainObj, dmMesh, rotationAxis;
+        let rLine, rLabel; 
+        let visualElements = []; 
+        let mass = 5.0, a = 6.0;
+
+        function createLabel(text, className, color="#fff") {
+            const div = document.createElement('div');
+            div.className = `label-3d ${className}`;
+            div.innerHTML = text;
+            div.style.color = color;
+            return new THREE.CSS2DObject(div);
+        }
+
+        function clearVisuals() {
+            [...visualElements].forEach(el => {
+                if (el.isCSS2DObject && el.element.parentNode) { el.element.parentNode.removeChild(el.element); }
+                scene.remove(el);
+            });
+            visualElements = [];
+            
+            if(mainObj) {
+                [...mainObj.children].forEach(c => { if(c.isCSS2DObject && c.element.parentNode) c.element.parentNode.removeChild(c.element); });
+                scene.remove(mainObj);
+            }
+            if(dmMesh) {
+                [...dmMesh.children].forEach(c => { if(c.isCSS2DObject && c.element.parentNode) c.element.parentNode.removeChild(c.element); });
+                scene.remove(dmMesh);
+            }
+            if(rotationAxis) scene.remove(rotationAxis);
+        }
+
+        function buildScene() {
+            clearVisuals();
+
+            const target = document.getElementById('target-obj').value;
+            const axis = document.getElementById('axis-pos').value;
+
+            // 1. 创建绝对坐标系
+            const axesLength = a * 1.5;
+            const axesHelper = new THREE.AxesHelper(axesLength);
+            visualElements.push(axesHelper);
+            scene.add(axesHelper);
+
+            const labX = createLabel('X', 'axis-label', '#ff4444'); labX.position.set(axesLength, 0, 0);
+            const labY = createLabel('Y', 'axis-label', '#44ff44'); labY.position.set(0, axesLength, 0);
+            const labZ = createLabel('Z', 'axis-label', '#4444ff'); labZ.position.set(0, 0, axesLength);
+            visualElements.push(labX, labY, labZ);
+            scene.add(labX); scene.add(labY); scene.add(labZ);
+
+            // 2. 设定宏观物体物理坐标
+            const mat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, transparent: true, opacity: 0.45 });
+            let geo, p_obj;
+
+            if (target === 'plate' && axis === 'center') {
+                geo = new THREE.BoxGeometry(a, a, 0.05); // XY平面
+                p_obj = new THREE.Vector3(0, 0, 0);
+            } else if (target === 'plate' && axis === 'edge') {
+                geo = new THREE.BoxGeometry(a, 0.05, a); // XZ平面
+                p_obj = new THREE.Vector3(a/2, 0, a/2);
+            } else if (target === 'cube' && axis === 'center') {
+                geo = new THREE.BoxGeometry(a, a, a);
+                p_obj = new THREE.Vector3(0, 0, 0);
+            } else if (target === 'cube' && axis === 'edge') {
+                geo = new THREE.BoxGeometry(a, a, a);
+                p_obj = new THREE.Vector3(a/2, a/2, a/2);
+            }
+
+            mainObj = new THREE.Mesh(geo, mat);
+            mainObj.position.copy(p_obj);
+            const edges = new THREE.EdgesGeometry(geo);
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0.8 }));
+            mainObj.add(line);
+            scene.add(mainObj);
+
+            // 3. 设定微元 dm (修复方位对齐Bug)
+            const dmSize = a * 0.08;
+            let dmGeo;
+            if (target === 'cube') {
+                dmGeo = new THREE.BoxGeometry(dmSize, dmSize, dmSize);
+            } else {
+                if (axis === 'center') {
+                    dmGeo = new THREE.BoxGeometry(dmSize, dmSize, 0.1); // XY平面厚度
+                } else {
+                    dmGeo = new THREE.BoxGeometry(dmSize, 0.1, dmSize); // XZ平面厚度
+                }
+            }
+            
+            dmMesh = new THREE.Mesh(dmGeo, new THREE.MeshBasicMaterial({ color: 0xff3366 }));
+            const dmLabel = createLabel('dm', '', '#ff3366');
+            dmLabel.position.set(dmSize*1.5, dmSize*1.5, 0);
+            dmMesh.add(dmLabel);
+            scene.add(dmMesh);
+
+            // 4. 创建动态距离线 r (连接 Z 轴与 dm)
+            const rMat = new THREE.LineDashedMaterial({ color: 0xfacc15, dashSize: 0.3, gapSize: 0.15 });
+            rLine = new THREE.Line(new THREE.BufferGeometry(), rMat);
+            visualElements.push(rLine);
+            scene.add(rLine);
+
+            rLabel = createLabel('r', 'math-italic', '#facc15');
+            visualElements.push(rLabel);
+            scene.add(rLabel);
+
+            // 5. 高亮转轴 (固定在Z轴)
+            const axisGeo = new THREE.CylinderGeometry(0.06, 0.06, a * 2.5, 12);
+            rotationAxis = new THREE.Mesh(axisGeo, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+            rotationAxis.rotation.x = Math.PI / 2; 
+            scene.add(rotationAxis);
+
+            updateLogic();
+            updateMath();
+        }
+
+        // ================= 3. 数学推导引擎 =================
+        function updateLogic() {
+            const target = document.getElementById('target-obj').value;
+            const axis = document.getElementById('axis-pos').value;
+            let resultI = 0;
+
+            if (target === 'plate' && axis === 'center') resultI = (1/6) * mass * a * a;
+            if (target === 'plate' && axis === 'edge') resultI = (1/3) * mass * a * a;
+            if (target === 'cube' && axis === 'center') resultI = (1/6) * mass * a * a;
+            if (target === 'cube' && axis === 'edge') resultI = (2/3) * mass * a * a;
+
+            document.getElementById('result-text').innerText = `I = ${resultI.toFixed(2)} kg·m²`;
+        }
+
+        function updateMath() {
+            const target = document.getElementById('target-obj').value;
+            const axis = document.getElementById('axis-pos').value;
+            const content = document.getElementById('math-content');
+            let html = "";
+
+            if (target === 'plate' && axis === 'center') {
+                html = `
+                    <div class="derivation-step">
+                        <div class="step-header">1. 构建面密度与微元</div>
+                        如图所示，我们设定正方形薄板位于 $X-Y$ 平面，坐标原点设在其几何中心。<br>
+                        薄板的质量面密度为 $\\sigma = \\frac{M}{a^2}$。<br>
+                        在任意坐标 $(x,y)$ 处取一个极小的面积微元 $dA = dx dy$，则该微元的质量为：
+                        $$ dm = \\sigma dx dy $$
+                    </div>
+                    <div class="derivation-step">
+                        <div class="step-header">2. 确定转轴距离 ($r$)</div>
+                        由于物体绕垂直于板面的 $Z$ 轴旋转，该微元到旋转轴的最短距离 $r$ 满足勾股定理：
+                        $$ r^2 = x^2 + y^2 $$
+                    </div>
+                    <div class="derivation-step">
+                        <div class="step-header">3. 二重积分求解</div>
+                        对整个正方形区域进行定积分。由于原点在中心，积分上下限皆为 $[-\\frac{a}{2}, \\frac{a}{2}]$：
+                        $$ I_z = \\iint r^2 dm = \\int_{-a/2}^{a/2} \\int_{-a/2}^{a/2} (x^2+y^2) \\sigma dx dy $$
+                        我们将其拆分为两项独立积分：
+                        $$ I_z = \\sigma \\left( \\int_{-a/2}^{a/2} x^2 dx \\int_{-a/2}^{a/2} dy + \\int_{-a/2}^{a/2} dx \\int_{-a/2}^{a/2} y^2 dy \\right) $$
+                        其中 $\\int_{-a/2}^{a/2} x^2 dx = \\left[ \\frac{1}{3}x^3 \\right]_{-a/2}^{a/2} = \\frac{a^3}{12}$。<br><br>
+                        代入求解：
+                        $$ I_z = \\sigma \\left( \\frac{a^3}{12} \\cdot a + a \\cdot \\frac{a^3}{12} \\right) = \\left(\\frac{M}{a^2}\\right) \\frac{2a^4}{12} = \\frac{1}{6}Ma^2 $$
+                    </div>
+                `;
+            } else if (target === 'plate' && axis === 'edge') {
+                html = `
+                    <div class="derivation-step">
+                        <div class="step-header">1. 坐标系适配</div>
+                        为了让薄板的一条边作为转轴（红色 Z 轴），我们将薄板平放在 $X-Z$ 平面上，并且其左边缘紧贴 Z 轴。<br>
+                        此时面密度依然为 $\\sigma = \\frac{M}{a^2}$，面积微元为 $dA = dx dz$，质量 $dm = \\sigma dx dz$。
+                    </div>
+                    <div class="derivation-step">
+                        <div class="step-header">2. 分析转动几何</div>
+                        注意看左侧画面的黄色虚线 $r$。微元到 Z 轴的最短距离**完全不依赖于 $z$ 坐标**，它仅仅等于微元的 $x$ 坐标！即：
+                        $$ r^2 = x^2 $$
+                    </div>
+                    <div class="derivation-step">
+                        <div class="step-header">3. 边界积分改变</div>
+                        因为薄板左边缘在原点，所以 $x$ 和 $z$ 的积分范围都从 0 开始，到边长 $a$ 结束：
+                        $$ I_z = \\int_{0}^{a} \\int_{0}^{a} x^2 \\sigma dx dz = \\sigma \\left(\\int_{0}^{a} x^2 dx \\right) \\left(\\int_{0}^{a} dz \\right) $$
+                        计算定积分：
+                        $$ I_z = \\left(\\frac{M}{a^2}\\right) \\cdot \\left[\\frac{1}{3}x^3\\right]_0^a \\cdot [z]_0^a = \\frac{M}{a^2} \\cdot \\frac{a^3}{3} \\cdot a = \\frac{1}{3}Ma^2 $$
+                    </div>
+                `;
+            } else if (target === 'cube' && axis === 'center') {
+                html = `
+                    <div class="derivation-step">
+                        <div class="step-header">1. 构建体密度与体积元</div>
+                        如图，正方体的几何中心位于坐标系原点。正方体的质量体密度为 $\\rho = \\frac{M}{a^3}$。<br>
+                        在空间任意位置 $(x,y,z)$ 截取体积微元 $dV = dx dy dz$，其质量为：
+                        $$ dm = \\rho dx dy dz $$
+                    </div>
+                    <div class="derivation-step">
+                        <div class="step-header">2. 观察柱面几何规律</div>
+                        红色旋转轴为穿过中心的 Z 轴。空间中任意微元到 Z 轴的最短垂直距离 $r$ 仅仅与水平坐标相关，与高度 $z$ 无关：
+                        $$ r^2 = x^2 + y^2 $$
+                    </div>
+                    <div class="derivation-step">
+                        <div class="step-header">3. 三重积分降维</div>
+                        正方体三个坐标的积分范围都是 $[-\\frac{a}{2}, \\frac{a}{2}]$。
+                        $$ I_z = \\iiint (x^2+y^2) \\rho dx dy dz $$
+                        我们可以优先对不参与 $r^2$ 的 $z$ 轴进行积分：$\\int_{-a/2}^{a/2} dz = a$。
+                        $$ I_z = \\rho \\cdot a \\iint (x^2+y^2) dx dy = \\left(\\frac{M}{a^3}\\right) a \\iint (x^2+y^2) dx dy $$
+                        这相当于化简为了一个质量为 $M$、面密度为 $\\frac{M}{a^2}$ 的薄板公式！所以结论完全一致：
+                        $$ I_z = \\frac{1}{6}Ma^2 $$
+                    </div>
+                `;
+            } else if (target === 'cube' && axis === 'edge') {
+                html = `
+                    <div style="font-size: 14px; color:#facc15; font-weight:bold; margin-bottom:10px;">解法一：硬核三重积分法 (Calculus Method)</div>
+                    <div class="derivation-step">
+                        <div class="step-header">1. 边缘棱的边界条件</div>
+                        将立方体的左前棱紧贴 Z 轴。此时立方体的主体全部位于第一象限。坐标积分域：$x \\in [0,a], y \\in [0,a], z \\in [0,a]$。<br>
+                        微元到 Z 轴距离仍为 $r^2 = x^2 + y^2$。
+                    </div>
+                    <div class="derivation-step">
+                        <div class="step-header">2. 积分展开求解</div>
+                        $$ I_z = \\int_0^a \\int_0^a \\int_0^a (x^2+y^2) \\rho dx dy dz $$
+                        提取出 $z$ 的积分 $\\int_0^a dz = a$，原式化为：
+                        $$ I_z = \\rho a \\left( \\int_0^a x^2 dx \\int_0^a dy + \\int_0^a dx \\int_0^a y^2 dy \\right) $$
+                        $$ = \\left(\\frac{M}{a^3}\\right) a \\left( \\frac{a^3}{3} \\cdot a + a \\cdot \\frac{a^3}{3} \\right) = \\frac{M}{a^2} \\left( \\frac{2a^4}{3} \\right) = \\frac{2}{3}Ma^2 $$
+                    </div>
+
+                    <div style="font-size: 14px; color:#00f2fe; font-weight:bold; margin:20px 0 10px 0;">解法二：平行轴定理 (Parallel Axis Theorem)</div>
+                    <div class="derivation-step" style="border-left-color: #00f2fe;">
+                        <div class="step-header">1. 计算质心平移距离</div>
+                        平行轴定理指出：$I = I_C + M d^2$。已知立方体绕中心轴 $I_C = \\frac{1}{6}Ma^2$。<br>
+                        从中心轴移到边缘轴，相当于在横截面上把轴从中心 $(a/2, a/2)$ 移到原点 $(0,0)$。
+                        平移距离 $d$ 的平方为：
+                        $$ d^2 = \\left(\\frac{a}{2}\\right)^2 + \\left(\\frac{a}{2}\\right)^2 = \\frac{a^2}{2} $$
+                    </div>
+                    <div class="derivation-step" style="border-left-color: #00f2fe;">
+                        <div class="step-header">2. 定理代入</div>
+                        $$ I = \\frac{1}{6}Ma^2 + M\\left(\\frac{a^2}{2}\\right) = \\frac{1}{6}Ma^2 + \\frac{3}{6}Ma^2 = \\frac{2}{3}Ma^2 $$
+                        <i>可见，定理让复杂的几何积分变得如代数般清爽！</i>
+                    </div>
+                `;
+            }
+
+            content.innerHTML = html;
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise([content]);
+            }
+        }
+
+        // ================= 4. 动画与微元漫游追踪 =================
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            const time = clock.getElapsedTime();
+            const target = document.getElementById('target-obj').value;
+            const axis = document.getElementById('axis-pos').value;
+
+            if (dmMesh) {
+                if (target === 'plate') {
+                    if (axis === 'center') {
+                        dmMesh.position.x = Math.sin(time * 0.8) * (a/2.2);
+                        dmMesh.position.y = Math.cos(time * 1.3) * (a/2.2);
+                        dmMesh.position.z = 0;
+                    } else {
+                        dmMesh.position.x = (Math.sin(time * 0.8) * 0.45 + 0.5) * a;
+                        dmMesh.position.y = 0;
+                        dmMesh.position.z = (Math.cos(time * 1.3) * 0.45 + 0.5) * a;
+                    }
+                } else { 
+                    if (axis === 'center') {
+                        dmMesh.position.x = Math.sin(time * 0.8) * (a/2.2);
+                        dmMesh.position.y = Math.cos(time * 1.3) * (a/2.2);
+                        dmMesh.position.z = Math.sin(time * 0.6) * (a/2.2);
+                    } else {
+                        dmMesh.position.x = (Math.sin(time * 0.8) * 0.45 + 0.5) * a;
+                        dmMesh.position.y = (Math.cos(time * 1.3) * 0.45 + 0.5) * a;
+                        dmMesh.position.z = (Math.sin(time * 0.6) * 0.45 + 0.5) * a;
+                    }
+                }
+
+                // 实时更新距离向量 r (投影到 Z 轴)
+                if (rLine && rLabel) {
+                    const p_proj = new THREE.Vector3(0, 0, dmMesh.position.z);
+                    rLine.geometry.setFromPoints([p_proj, dmMesh.position]);
+                    rLine.computeLineDistances(); 
+                    
+                    rLabel.position.copy(p_proj).lerp(dmMesh.position, 0.5);
+                }
+            }
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        // ================= 5. 事件响应 & UI 控制 =================
+        ['target-obj', 'axis-pos'].forEach(id => {
+            document.getElementById(id).addEventListener('change', buildScene);
+        });
+
+        document.getElementById('input-a').addEventListener('input', (e) => {
+            a = parseFloat(e.target.value);
+            document.getElementById('val-a').innerText = a.toFixed(1) + " m";
+            buildScene();
+        });
+
+        document.getElementById('input-m').addEventListener('input', (e) => {
+            mass = parseFloat(e.target.value);
+            document.getElementById('val-m').innerText = mass.toFixed(1) + " kg";
+            updateLogic();
+            updateMath(); 
+        });
+
+        // 侧边栏折叠逻辑
+        const mathPanel = document.getElementById('math-panel');
+        document.getElementById('toggle-math-btn').addEventListener('click', () => {
+            mathPanel.classList.toggle('collapsed');
+        });
+        document.getElementById('close-math-btn').addEventListener('click', () => {
+            mathPanel.classList.add('collapsed');
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        buildScene();
+        animate();
+    </script>
+</body>
+</html>

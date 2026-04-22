@@ -343,19 +343,18 @@
                         textShadowBlur: 6,
                         textShadowColor: '#000'
                     },
+                    // ================= 核心修复：纯正的发光红色字体 =================
                     edgeLabel: {
                         show: true,
                         formatter: function(params) { return params.data.value || ''; },
-                        fontSize: 12,
-                        color: function(params) {
-                            return params.data.lineStyle && params.data.lineStyle.color === '#ff4d4f' ? '#ff4d4f' : '#00e1fd';
-                        },
+                        fontSize: 14,
+                        color: '#ff4d4f',          // 字体设为科技红
                         fontWeight: 'bold',
-                        textShadowBlur: 3,
-                        textShadowColor: '#000',
-                        backgroundColor: 'rgba(0,0,0,0.5)',
-                        padding: [2, 4],
-                        borderRadius: 3
+                        textShadowBlur: 10,        // 增强文字发光效果
+                        textShadowColor: '#ff0000', // 纯红色发光外晕
+                        backgroundColor: 'transparent', // 彻底移除背景颜色
+                        borderWidth: 0,            // 彻底移除边框
+                        padding: 0                 // 移除内边距
                     },
                     lineStyle: {
                         color: '#00e1fd',
