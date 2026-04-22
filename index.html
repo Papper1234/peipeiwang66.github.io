@@ -518,36 +518,44 @@ document.addEventListener('click', function(e) {
             <div class="title" style="margin-bottom: 30px;">刚体动力学物理引擎推演库</div>
             <div class="btn-group">
                 <button class="external-btn" onclick="openInCurrentWindow('均匀细棒转动惯量', '均匀细棒转动惯量.html')">
-                    <div class="btn-cover" style="background-image: url('images/均匀细棒转动惯量.png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_均匀细棒转动惯量.png');"></div>
                     <div class="btn-info">均匀细棒转动惯量<br><span>(一维连续分布刚体)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('圆盘转动惯量', '圆盘转动惯量.html')">
-                    <div class="btn-cover" style="background-image: url('images/圆盘转动惯量.png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_圆盘转动惯量.png');"></div>
                     <div class="btn-info">圆盘转动惯量<br><span>(二维面分布积分)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('圆环转动惯量', '圆环转动惯量.html')">
-                    <div class="btn-cover" style="background-image: url('images/圆环转动惯量.png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_圆环转动惯量.png');"></div>
                     <div class="btn-info">圆环转动惯量<br><span>(一维连续分布刚体)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('正方形体转动惯量', '正方形体转动惯量.html')">
-                    <div class="btn-cover" style="background-image: url('images/正方形体转动惯量.png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_正方形体转动惯量.png');"></div>
                     <div class="btn-info">正方形体转动惯量<br><span>(二重积分推导)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('自由陀螺仪(回转仪)', '回转仪.html')">
-                    <div class="btn-cover" style="background-image: url('images/回转仪.png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_回转仪.png');"></div>
                     <div class="btn-info">自由陀螺仪(回转仪)<br><span>(定轴性与进动性)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('阿特伍德双物块系统', '阿特伍德双物块系统.html')">
-                    <div class="btn-cover" style="background-image: url('images/阿特伍德双物块系统.png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_阿特伍德双物块系统.png');"></div>
                     <div class="btn-info">阿特伍德双物块系统<br><span>(考虑滑轮转动惯量)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('滑轮刚体动力学', '滑轮刚体动力学.html')">
-                    <div class="btn-cover" style="background-image: url('images/滑轮刚体动力学.png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_滑轮刚体动力学.png');"></div>
                     <div class="btn-info">滑轮刚体动力学<br><span>(定滑轮隔离法)</span></div>
                 </button>
                 <button class="external-btn" onclick="openInCurrentWindow('恒定力矩圆周运动', '恒定力矩圆周运动模型立体门.html')">
-                    <div class="btn-cover" style="background-image: url('images/恒定力矩圆周运动模型立体门.png');"></div>
+                    <div class="btn-cover" style="background-image: url('images/cover_恒定力矩圆周运动模型立体门.png');"></div>
                     <div class="btn-info">恒定力矩圆周运动<br><span>(立体门旋转模型)</span></div>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('均匀实心球转动惯量', '球体转动惯量.html')">
+                    <div class="btn-cover" style="background-image: url('images/cover_球体转动惯量.png');"></div>
+                    <div class="btn-info">均匀实心球转动惯量<br><span>(圆盘切片积分)</span></div>
+                </button>
+                <button class="external-btn" onclick="openInCurrentWindow('均匀薄球壳转动惯量', '球壳转动惯量.html')">
+                    <div class="btn-cover" style="background-image: url('images/cover_球壳转动惯量.png');"></div>
+                    <div class="btn-info">均匀薄球壳转动惯量<br><span>(球面带微元积分)</span></div>
                 </button>
             </div>
             <button class="back-btn" onclick="goBack('rigidBody')">返回上一级</button>
@@ -660,14 +668,14 @@ document.addEventListener('click', function(e) {
 </div>
 
 <div id="ai-chat-widget">
-    <div id="ai-chat-header" onclick="toggleXiaoDChat()">
-        <span>物理智算导师 Xiao D</span>
-        <span id="ai-chat-close-icon">✖</span>
+    <div id="ai-chat-header">
+        <span onclick="toggleXiaoDChat()" style="flex:1;">物理智算导师 Xiao D</span>
+        <span id="clear-history-btn" onclick="clearXiaoDMemory()" title="清除上下文记忆" style="margin-right: 15px; font-size: 14px; cursor: pointer; opacity: 0.8;">🔄 重置</span>
+        <span id="ai-chat-close-icon" onclick="toggleXiaoDChat()">✖</span>
     </div>
     <div id="ai-chat-body">
         <div id="ai-chat-messages">
-            <div class="msg ai-msg">探索者你好，我是 Xiao D。已连接淮北师范大学物理学知识库。今天想推演什么问题？</div>
-        </div>
+            </div>
         <div id="ai-chat-input-area">
             <input type="text" id="ai-input" placeholder="输入物理问题或暗号..." onkeypress="handleEnter(event)">
             <button onclick="sendDifyMessage()">发送</button>
@@ -835,9 +843,12 @@ document.addEventListener('click', function(e) {
       if (!hasMoved) toggleXiaoDChat();
   });
 
-  // ================= AI 通信及主动唤醒引擎逻辑 =================
+  // ================= AI 通信、唤醒引擎及【本地记忆】逻辑 =================
   const DIFY_API_KEY = 'Bearer app-lVKZ59YiaVsA1GgvbGalukYn'; 
-  let conversationId = "";
+  
+  // 从本地存储读取记忆，如果没有则初始化
+  let conversationId = localStorage.getItem('xiaod_conversation_id') || "";
+  let chatHistory = JSON.parse(localStorage.getItem('xiaod_chat_history')) || [];
 
   const commandDict = {
       '[CMD: 3d_trajectory]': { name: '三维曲线运动仿真', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('三维曲线运动仿真', '3d_kinematics.html'); } },
@@ -864,8 +875,8 @@ document.addEventListener('click', function(e) {
       '[CMD: angular_momentum]': { name: '角动量 3D 几何可视化', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('角动量可视化', 'Angular_Momentum.html'); } },
       '[CMD: oblique_collision]': { name: '二维斜碰动力学', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('二维斜碰与约束', 'Oblique_Collision.html'); } },
       '[CMD: collision_pendulum]': { name: '冲击摆物理实验室', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('冲击摆', 'Collision_Pendulum.html'); } },
-
-// 第三章 刚体动力学 唤醒指令
+      
+      // 第三章 刚体动力学 唤醒指令
       '[CMD: rigid_rod]': { name: '均匀细棒转动惯量', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('均匀细棒转动惯量', '均匀细棒转动惯量.html'); } },
       '[CMD: rigid_disk]': { name: '圆盘转动惯量', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('圆盘转动惯量', '圆盘转动惯量.html'); } },
       '[CMD: rigid_ring]': { name: '圆环转动惯量', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('圆环转动惯量', '圆环转动惯量.html'); } },
@@ -873,7 +884,9 @@ document.addEventListener('click', function(e) {
       '[CMD: gyroscope]': { name: '自由陀螺仪(回转仪)', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('自由陀螺仪(回转仪)', '回转仪.html'); } },
       '[CMD: atwood_machine]': { name: '阿特伍德双物块系统', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('阿特伍德双物块系统', '阿特伍德双物块系统.html'); } },
       '[CMD: pulley_dynamics]': { name: '滑轮刚体动力学', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('滑轮刚体动力学', '滑轮刚体动力学.html'); } },
-      '[CMD: constant_torque]': { name: '恒定力矩圆周运动', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('恒定力矩圆周运动', '恒定力矩圆周运动模型立体门.html'); } }
+      '[CMD: constant_torque]': { name: '恒定力矩圆周运动', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('恒定力矩圆周运动', '恒定力矩圆周运动模型立体门.html'); } },
+      '[CMD: solid_sphere]': { name: '均匀实心球转动惯量', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('均匀实心球转动惯量', '球体转动惯量.html'); } },
+      '[CMD: spherical_shell]': { name: '均匀薄球壳转动惯量', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('均匀薄球壳转动惯量', '球壳转动惯量.html'); } }
   };
 
   window.triggerSimEngine = function(cmd) {
@@ -893,27 +906,83 @@ document.addEventListener('click', function(e) {
 
   function handleEnter(e) { if (e.key === 'Enter') sendDifyMessage(); }
 
-  function appendMessage(text, sender) {
+  // 保存记忆到浏览器
+  function saveChatMemory() {
+      localStorage.setItem('xiaod_conversation_id', conversationId);
+      localStorage.setItem('xiaod_chat_history', JSON.stringify(chatHistory));
+  }
+
+  // 清除记忆
+  window.clearXiaoDMemory = function() {
+      if(confirm('确定要清除 Xiao D 的上下文记忆并开启新对话吗？')) {
+          localStorage.removeItem('xiaod_conversation_id');
+          localStorage.removeItem('xiaod_chat_history');
+          conversationId = "";
+          chatHistory = [];
+          initChat();
+      }
+  };
+
+  // 渲染单条消息气泡
+  function renderMessage(text, sender, cmd = null) {
       const box = document.getElementById('ai-chat-messages');
       const msgDiv = document.createElement('div');
       msgDiv.className = `msg ${sender}-msg`;
       let formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
       formattedText = formattedText.replace(/\n/g, '<br>');
       msgDiv.innerHTML = formattedText;
+      
+      // 如果存在附带指令，渲染启动按钮
+      if (cmd && commandDict[cmd]) {
+          let btn = document.createElement('button');
+          btn.className = 'ai-invoke-btn';
+          btn.innerHTML = `🚀 点击启动：${commandDict[cmd].name}`;
+          btn.onclick = () => window.triggerSimEngine(cmd);
+          msgDiv.appendChild(btn);
+      }
+
       box.appendChild(msgDiv);
       box.scrollTop = box.scrollHeight;
-      return msgDiv; 
+      return msgDiv;
   }
 
+  // 初始化聊天框界面
+  function initChat() {
+      const box = document.getElementById('ai-chat-messages');
+      box.innerHTML = ''; // 清空当前渲染
+      
+      if (chatHistory.length === 0) {
+          // 没有历史记录，发送默认欢迎语
+          const greeting = "探索者你好，我是 Xiao D。已连接淮北师范大学物理学知识库。今天想推演什么问题？";
+          renderMessage(greeting, 'ai');
+          chatHistory.push({ sender: 'ai', text: greeting, cmd: null });
+          saveChatMemory();
+      } else {
+          // 有历史记录，逐条恢复渲染
+          chatHistory.forEach(msg => {
+              renderMessage(msg.text, msg.sender, msg.cmd);
+          });
+          // 渲染公式
+          if (window.MathJax) {
+              MathJax.typesetPromise().catch(err => console.log('MathJax 渲染失败: ' + err.message));
+          }
+      }
+  }
+
+  // 核心发送逻辑
   async function sendDifyMessage() {
       const inputEl = document.getElementById('ai-input');
       const text = inputEl.value.trim();
       if (!text) return;
 
-      appendMessage(text, 'user');
+      // 渲染并保存用户输入
+      renderMessage(text, 'user');
+      chatHistory.push({ sender: 'user', text: text, cmd: null });
+      saveChatMemory();
+      
       inputEl.value = '';
       
-      const loadingNode = appendMessage('算力矩阵推演中...', 'ai');
+      const loadingNode = renderMessage('算力矩阵推演中...', 'ai');
       loadingNode.classList.add('loading-msg');
 
       try {
@@ -937,7 +1006,7 @@ document.addEventListener('click', function(e) {
 
           if (data.answer) {
               let replyText = data.answer;
-              conversationId = data.conversation_id;
+              conversationId = data.conversation_id; // 更新上下文ID
 
               let foundCmd = null;
               for (const cmd in commandDict) {
@@ -948,18 +1017,10 @@ document.addEventListener('click', function(e) {
                   }
               }
 
-              let msgBubble = appendMessage(replyText.trim(), 'ai');
-
-              if (foundCmd && commandDict[foundCmd]) {
-                  let btn = document.createElement('button');
-                  btn.className = 'ai-invoke-btn';
-                  btn.innerHTML = `🚀 点击启动：${commandDict[foundCmd].name}`;
-                  btn.onclick = () => window.triggerSimEngine(foundCmd);
-                  msgBubble.appendChild(btn);
-                  
-                  const box = document.getElementById('ai-chat-messages');
-                  box.scrollTop = box.scrollHeight;
-              }
+              // 渲染并保存AI回复
+              renderMessage(replyText.trim(), 'ai', foundCmd);
+              chatHistory.push({ sender: 'ai', text: replyText.trim(), cmd: foundCmd });
+              saveChatMemory();
 
               if (window.MathJax) {
                   MathJax.typesetPromise().catch(function (err) {
@@ -968,15 +1029,18 @@ document.addEventListener('click', function(e) {
               }
 
           } else {
-              appendMessage("⚠️ 算力节点返回异常，请稍后重试。", 'ai');
+              renderMessage("⚠️ 算力节点返回异常，请稍后重试。", 'ai');
           }
       } catch (error) {
           loadingNode.remove();
-          appendMessage("⚠️ 网络空间连接中断，无法呼叫 Xiao D 中枢。", 'ai');
+          renderMessage("⚠️ 网络空间连接中断，无法呼叫 Xiao D 中枢。", 'ai');
           console.error(error);
       }
   }
-</script>
 
+  // 页面加载完成后立即初始化聊天记录
+  document.addEventListener('DOMContentLoaded', initChat);
+
+</script>
 </body>
 </html>
