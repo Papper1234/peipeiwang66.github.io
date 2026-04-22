@@ -863,7 +863,17 @@ document.addEventListener('click', function(e) {
       '[CMD: torque_brake]': { name: '恒定扭矩刹车测试台', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('恒定扭矩刹车', '恒定扭矩刹车测试台.html'); } },
       '[CMD: angular_momentum]': { name: '角动量 3D 几何可视化', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('角动量可视化', 'Angular_Momentum.html'); } },
       '[CMD: oblique_collision]': { name: '二维斜碰动力学', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('二维斜碰与约束', 'Oblique_Collision.html'); } },
-      '[CMD: collision_pendulum]': { name: '冲击摆物理实验室', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('冲击摆', 'Collision_Pendulum.html'); } }
+      '[CMD: collision_pendulum]': { name: '冲击摆物理实验室', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('冲击摆', 'Collision_Pendulum.html'); } },
+
+// 第三章 刚体动力学 唤醒指令
+      '[CMD: rigid_rod]': { name: '均匀细棒转动惯量', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('均匀细棒转动惯量', '均匀细棒转动惯量.html'); } },
+      '[CMD: rigid_disk]': { name: '圆盘转动惯量', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('圆盘转动惯量', '圆盘转动惯量.html'); } },
+      '[CMD: rigid_ring]': { name: '圆环转动惯量', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('圆环转动惯量', '圆环转动惯量.html'); } },
+      '[CMD: rigid_square]': { name: '正方形体转动惯量', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('正方形体转动惯量', '正方形体转动惯量.html'); } },
+      '[CMD: gyroscope]': { name: '自由陀螺仪(回转仪)', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('自由陀螺仪(回转仪)', '回转仪.html'); } },
+      '[CMD: atwood_machine]': { name: '阿特伍德双物块系统', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('阿特伍德双物块系统', '阿特伍德双物块系统.html'); } },
+      '[CMD: pulley_dynamics]': { name: '滑轮刚体动力学', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('滑轮刚体动力学', '滑轮刚体动力学.html'); } },
+      '[CMD: constant_torque]': { name: '恒定力矩圆周运动', action: () => { if(typeof openInCurrentWindow === 'function') openInCurrentWindow('恒定力矩圆周运动', '恒定力矩圆周运动模型立体门.html'); } }
   };
 
   window.triggerSimEngine = function(cmd) {
