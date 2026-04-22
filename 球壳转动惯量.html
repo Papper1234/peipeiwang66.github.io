@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 均匀薄球壳转动惯量推演实验室</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' },
+            startup: {
+                pageReady: () => {
+                    return MathJax.startup.defaultPageReady().then(() => {
+                        if(typeof updateMath === 'function') updateMath();
+                    });
+                }
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.92); --primary: #00f2fe; --text: #e2e8f0; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.8); backdrop-filter: blur(12px); border-radius: 12px; z-index: 10; padding: 20px; box-sizing: border-box; }
+        
+        /* 左侧面板带滚动条 */
+        #controls { top: 20px; left: 20px; width: 340px; max-height: calc(100vh - 40px); overflow-y: auto; }
+        #controls::-webkit-scrollbar { width: 6px; }
+        #controls::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+
+        h1 { margin: 0; font-size: 18px; color: var(--primary); }
+        .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(0, 242, 254, 0.2); padding-bottom: 10px; margin-bottom: 15px; }
+        
+        .control-group { margin-bottom: 15px; }
+        label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; font-weight: 600; color: #94a3b8; }
+        input[type=range] { width: 100%; accent-color: var(--primary); cursor: pointer; }
+        
+        .slider-container { background: rgba(250, 204, 21, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #facc15; margin-bottom: 15px; }
+        .slider-container label { color: #facc15; }
+        .slider-container input[type=range] { accent-color: #facc15; }
+
+        .toggle-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; margin-top: 15px; }
+        .toggle-label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #cbd5e1; cursor: pointer; }
+        .toggle-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); }
+
+        button { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 13px; width: 100%; box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3); }
+        button:hover { background: #00c8d2; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5); }
+
+        /* 右侧推导区 */
+        #math-panel { top: 20px; right: 20px; width: 540px; max-height: calc(100vh - 40px); overflow-y: auto; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease; }
+        #math-panel.collapsed { transform: translateX(120%); opacity: 0; pointer-events: none; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        .derivation-step { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 18px; margin-bottom: 12px; border-left: 4px solid #334; }
+        .step-header { font-size: 15px; font-weight: bold; color: var(--primary); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+
+        #close-math-btn { width: auto; background: rgba(255,255,255,0.1); box-shadow: none; color: #cbd5e1; padding: 5px 10px; font-size: 12px; }
+        #close-math-btn:hover { background: rgba(239, 68, 68, 0.8); color: white; }
+
+        .label-3d { font-weight: bold; font-size: 15px; pointer-events: none; text-shadow: 2px 2px 4px #000; }
+        .axis-label { font-family: 'Arial Black', sans-serif; font-size: 18px; }
+        .math-italic { font-style: italic; font-family: 'Times New Roman', serif; font-size: 18px; }
+        .label-dm { color: #ff3366; font-size: 15px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255, 51, 102, 0.5); }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <div class="header-box">
+            <h1>⚙️ 物理代数概念模型</h1>
+        </div>
+
+        <div style="font-size: 13px; color: #aed9e0; margin-bottom: 15px; line-height: 1.5;">
+            本实验室为纯代数推演。我们利用球面对称性，选取一圈“球面圆环带”作为面积微元进行推演。
+        </div>
+
+        <div class="control-group">
+            <label>球壳半径参量 (R)</label>
+            <input type="range" id="input-R" min="3" max="8" value="5" step="0.1">
+        </div>
+
+        <div id="theta-slider-container" class="slider-container">
+            <label>微元极角参量 (θ)</label>
+            <input type="range" id="input-theta" min="0.1" max="3.04" value="1.04" step="0.05">
+        </div>
+
+        <div class="toggle-group">
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-spin" checked> 开启宏观系统旋转
+            </label>
+            <label class="toggle-label" style="color: #ff3366;">
+                <input type="checkbox" id="toggle-dm" checked> 显示静态质元及分析标注
+            </label>
+        </div>
+
+        <div style="background:rgba(0,0,0,0.3); padding:15px; border-radius:8px; border-left:4px solid var(--primary); margin-bottom: 15px;">
+            <div style="font-size:12px; color:#94a3b8;">薄球壳理论代数推导结论</div>
+            <div style="font-size:20px; font-family:'Times New Roman', serif; font-weight:bold; margin-top:5px; color:var(--primary); letter-spacing: 1px;">
+                I = 2/3 m R<sup>2</sup>
+            </div>
+        </div>
+
+        <button id="toggle-math-btn" style="background: #10b981; box-shadow: 0 4px 15px rgba(16,185,129,0.3);">📘 显示/隐藏数学推导面板</button>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <div class="header-box">
+            <h1>📐 均匀薄球壳转动惯量微元推导</h1>
+            <button id="close-math-btn">✖ 收起</button>
+        </div>
+        <div id="math-content" style="font-size: 14px; line-height: 1.7; color: #e2e8f0;">
+            <div style="font-size: 14px; color:#facc15; font-weight:bold; margin-bottom:10px;">球面微元带积分法</div>
+            <div class="derivation-step">
+                <div class="step-header">1. 确定面密度与微元</div>
+                设均匀薄球壳质量为 $m$，半径为 $R$。由于其为纯二维曲面，面密度为：
+                $$ \sigma = \frac{m}{4\pi R^2} $$
+                以 Z 轴为极轴。在极角 $\theta$ 处，取极角增量为 $d\theta$ 的一圈“球面圆环带”作为面积微元（图中粉色环带）。<br>
+                该圆环带的半径为 $r = R\sin\theta$，其表面宽度为 $dl = R d\theta$。因此其面积 $dA$ 为：
+                $$ dA = 2\pi r \cdot dl = 2\pi (R\sin\theta)(R d\theta) = 2\pi R^2 \sin\theta d\theta $$
+                微元带的质量 $dm$ 为：
+                $$ dm = \sigma dA = \left(\frac{m}{4\pi R^2}\right) 2\pi R^2 \sin\theta d\theta = \frac{1}{2}m \sin\theta d\theta $$
+            </div>
+            <div class="derivation-step">
+                <div class="step-header">2. 计算微元转动惯量 $dI$</div>
+                由于该粉色圆环带上的所有质点到旋转轴（Z轴）的垂直距离均为 $r = R\sin\theta$，根据圆环的转动惯量公式：
+                $$ dI = r^2 dm = (R\sin\theta)^2 \left( \frac{1}{2}m \sin\theta d\theta \right) = \frac{1}{2}m R^2 \sin^3\theta d\theta $$
+            </div>
+            <div class="derivation-step" style="border-left-color: #00f2fe;">
+                <div class="step-header" style="color:#00f2fe;">3. 全球面积分求解</div>
+                对整个球面进行积分，极角 $\theta$ 的范围从 $0$（北极）到 $\pi$（南极）：
+                $$ I_z = \int_0^\pi dI = \int_0^\pi \frac{1}{2}m R^2 \sin^3\theta d\theta $$
+                提取常数，并利用三角恒等式 $\sin^3\theta = \sin\theta(1-\cos^2\theta)$ 积分：
+                $$ I_z = \frac{1}{2}m R^2 \int_0^\pi (1-\cos^2\theta)\sin\theta d\theta $$
+                $$ I_z = \frac{1}{2}m R^2 \left[ -\cos\theta + \frac{1}{3}\cos^3\theta \right]_0^\pi $$
+                $$ I_z = \frac{1}{2}m R^2 \left[ \left(1 - \frac{1}{3}\right) - \left(-1 + \frac{1}{3}\right) \right] = \frac{1}{2}m R^2 \left( \frac{4}{3} \right) = \frac{2}{3}m R^2 $$
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= 1. 初始化引擎 =================
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050a15, 0.025);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(15, 12, 18);
+        camera.up.set(0, 0, 1); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 0, 0);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+        sun.position.set(15, 15, 25);
+        scene.add(sun);
+
+        // ================= 2. 构建 3D 几何实体 =================
+        let isSpinning = true;
+        let R_radius = 5.0;      
+        let theta_angle = 1.04; // 约60度
+        
+        const rotatingGroup = new THREE.Group(); 
+        const dmGroup = new THREE.Group(); 
+        scene.add(rotatingGroup);
+        rotatingGroup.add(dmGroup);
+
+        let visualElements = []; 
+        let rotationAxis;
+
+        function createLabel(text, className, color="#fff") {
+            const div = document.createElement('div');
+            div.className = `label-3d ${className}`;
+            div.innerHTML = text;
+            div.style.color = color;
+            return new THREE.CSS2DObject(div);
+        }
+
+        function clearVisuals() {
+            scene.traverse((child) => {
+                if (child.isCSS2DObject && child.element && child.element.parentNode) {
+                    child.element.parentNode.removeChild(child.element);
+                }
+            });
+            while(rotatingGroup.children.length > 0) rotatingGroup.remove(rotatingGroup.children[0]);
+            while(dmGroup.children.length > 0) dmGroup.remove(dmGroup.children[0]);
+            visualElements.forEach(el => scene.remove(el));
+            visualElements = [];
+            if(rotationAxis) scene.remove(rotationAxis);
+        }
+
+        function buildScene() {
+            clearVisuals();
+
+            // --- a. 绝对静态坐标系 ---
+            const axesLength = R_radius * 1.5;
+            const axesHelper = new THREE.AxesHelper(axesLength);
+            visualElements.push(axesHelper);
+            scene.add(axesHelper);
+
+            const labX = createLabel('X', 'axis-label', '#ff4444'); labX.position.set(axesLength, 0, 0);
+            const labY = createLabel('Y', 'axis-label', '#44ff44'); labY.position.set(0, axesLength, 0);
+            const labZ = createLabel('Z (转轴)', 'axis-label', '#4444ff'); labZ.position.set(0, 0, axesLength);
+            visualElements.push(labX, labY, labZ);
+            scene.add(labX); scene.add(labY); scene.add(labZ);
+
+            // --- b. 宏观薄球壳 (挂载在旋转组) ---
+            const sphereGeo = new THREE.SphereGeometry(R_radius, 64, 64);
+            const sphereMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, transparent: true, opacity: 0.35, wireframe: true, metalness: 0.5 });
+            const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
+            sphereMesh.rotation.x = Math.PI / 2; // 调整经纬线对齐 Z 轴
+            rotatingGroup.add(sphereMesh);
+
+            const R_arrow = new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0), R_radius, 0x00f2fe, 0.6, 0.3);
+            scene.add(R_arrow); visualElements.push(R_arrow);
+            const label_R = createLabel('R', 'math-italic', '#00f2fe');
+            label_R.position.set(0, R_radius/2, 0.5);
+            scene.add(label_R); visualElements.push(label_R);
+
+            rotatingGroup.add(dmGroup); 
+
+            // --- c. 球面微元带 (dm) 及分析标注 ---
+            const dTheta = 0.15; // 带宽
+            // 利用 SphereGeometry 的 phiStart 和 phiLength 完美生成球带
+            const ringGeo = new THREE.SphereGeometry(R_radius * 1.02, 64, 16, 0, Math.PI * 2, theta_angle, dTheta);
+            const dmMat = new THREE.MeshStandardMaterial({ color: 0xff3366, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+            const dmMesh = new THREE.Mesh(ringGeo, dmMat);
+            dmMesh.rotation.x = Math.PI / 2; 
+            dmGroup.add(dmMesh);
+
+            // r 半径矢量 (投影到 XY 面)
+            const r_proj = R_radius * Math.sin(theta_angle);
+            const z_pos = R_radius * Math.cos(theta_angle);
+            const dirX = new THREE.Vector3(1, 0, 0);
+            const arrow_r = new THREE.ArrowHelper(dirX, new THREE.Vector3(0,0,z_pos), r_proj, 0xfacc15, 0.4, 0.2);
+            dmGroup.add(arrow_r);
+            
+            const label_r = createLabel('r', 'math-italic', '#facc15');
+            label_r.position.set(r_proj/2, 0, z_pos + 0.3);
+            dmGroup.add(label_r);
+
+            // 极角 θ 辅助线
+            const origin = new THREE.Vector3(0,0,0);
+            const endPt = new THREE.Vector3(r_proj, 0, z_pos);
+            const lineMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.2, gapSize: 0.1 });
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([origin, endPt]);
+            const thetaLine = new THREE.Line(lineGeo, lineMat);
+            thetaLine.computeLineDistances();
+            dmGroup.add(thetaLine);
+
+            const label_dm = createLabel('dm', 'label-dm');
+            label_dm.position.set(-r_proj, 0, z_pos);
+            dmGroup.add(label_dm);
+
+            const label_theta = createLabel('θ', 'math-italic', '#fff');
+            label_theta.position.set(0.6 * Math.sin(theta_angle/2), 0, 0.6 * Math.cos(theta_angle/2));
+            dmGroup.add(label_theta);
+
+            // 弧长 dl = R dθ 标注
+            const label_dl = createLabel('dl = R dθ', 'math-italic', '#ff3366');
+            label_dl.position.set(endPt.x + 0.5, 0, endPt.z);
+            dmGroup.add(label_dl);
+
+            // --- d. Z 轴光柱 ---
+            const axisGeo = new THREE.CylinderGeometry(0.04, 0.04, R_radius * 2.5, 12);
+            rotationAxis = new THREE.Mesh(axisGeo, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+            rotationAxis.rotation.x = Math.PI / 2; 
+            scene.add(rotationAxis);
+
+            syncDmVisibility();
+        }
+
+        // ================= 4. 渲染动画循环 =================
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            if (isSpinning) rotatingGroup.rotation.z += 0.01; 
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        // ================= 5. 三重锁死显示/隐藏同步控制 =================
+        function syncDmVisibility() {
+            const isVisible = document.getElementById('toggle-dm').checked;
+            dmGroup.visible = isVisible; 
+            dmGroup.traverse((child) => {
+                child.visible = isVisible; 
+                if (child.element) {
+                    child.element.style.display = isVisible ? 'block' : 'none';
+                    child.element.style.opacity = isVisible ? '1' : '0';
+                    child.element.style.visibility = isVisible ? 'visible' : 'hidden';
+                }
+            });
+        }
+
+        // ================= 6. 事件响应 & UI 控制 =================
+        document.getElementById('input-R').addEventListener('input', (e) => {
+            R_radius = parseFloat(e.target.value);
+            buildScene();
+        });
+
+        document.getElementById('input-theta').addEventListener('input', (e) => {
+            theta_angle = parseFloat(e.target.value);
+            buildScene();
+        });
+
+        document.getElementById('toggle-spin').addEventListener('change', (e) => { isSpinning = e.target.checked; });
+        document.getElementById('toggle-dm').addEventListener('change', syncDmVisibility);
+
+        const mathPanel = document.getElementById('math-panel');
+        document.getElementById('toggle-math-btn').addEventListener('click', () => { mathPanel.classList.toggle('collapsed'); });
+        document.getElementById('close-math-btn').addEventListener('click', () => { mathPanel.classList.add('collapsed'); });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if(e.key.toLowerCase() === 'p') {
+                const link = document.createElement('a');
+                link.download = 'moment_of_inertia_spherical_shell.png';
+                link.href = renderer.domElement.toDataURL();
+                link.click();
+            }
+        });
+
+        buildScene();
+        animate();
+    </script>
+</body>
+</html>
