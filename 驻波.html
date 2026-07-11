@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>驻波物理建模与分波解构平台</title>
+    <style>
+        :root {
+            --bg-color: #1a1d21;
+            --panel-bg: rgba(30, 34, 40, 0.95);
+            --border-color: #3a414a;
+            --text-main: #d4d4d4;
+            --cyan: #00ffff;
+            --magenta: #ff00ff;
+            --green: #00ff88;
+            --orange: #ff9900;
+        }
+        body { margin: 0; overflow: hidden; background-color: var(--bg-color); color: var(--text-main); font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        /* 工业 CAD UI */
+        #ui-panel {
+            position: absolute; top: 20px; left: 20px; width: 340px; z-index: 10;
+            background: var(--panel-bg); border: 1px solid var(--border-color);
+            border-radius: 6px; box-shadow: 0 12px 32px rgba(0,0,0,0.8);
+            backdrop-filter: blur(4px); display: flex; flex-direction: column;
+        }
+        .panel-header { padding: 15px 20px; border-bottom: 1px solid var(--border-color); font-weight: bold; color: #fff; letter-spacing: 1px; font-size: 14px; text-transform: uppercase; }
+        .panel-section { padding: 15px 20px; border-bottom: 1px solid var(--border-color); }
+        .panel-section:last-child { border-bottom: none; }
+        .section-title { font-size: 12px; color: #888; margin-bottom: 10px; text-transform: uppercase; }
+
+        /* 切换按钮 */
+        .toggle-group { display: flex; gap: 5px; margin-bottom: 15px; }
+        .toggle-btn {
+            flex: 1; padding: 8px; background: #2a2f36; border: 1px solid var(--border-color);
+            color: var(--text-main); cursor: pointer; border-radius: 3px; font-size: 12px;
+            transition: all 0.2s; text-align: center;
+        }
+        .toggle-btn.active { background: #0d3b4a; border-color: var(--cyan); color: var(--cyan); font-weight: bold; }
+
+        /* 滑动条与复选框 */
+        .control-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
+        input[type="range"] { width: 100%; margin-bottom: 15px; accent-color: var(--cyan); cursor: pointer; }
+        
+        .checkbox-row { display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; margin-top: 5px; color: #fff; }
+        input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--magenta); cursor: pointer; }
+
+        /* 数据读数面板 */
+        .data-readout { background: #14161a; padding: 12px; border: 1px solid #2a2f36; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 12px; line-height: 1.8; }
+        .data-row { display: flex; justify-content: space-between; }
+        .highlight-lock { color: var(--magenta); font-weight: bold; font-size: 13px; }
+        
+        #legend { position: absolute; bottom: 20px; left: 20px; z-index: 10; font-family: 'Consolas', monospace; font-size: 12px; color: #777; background: rgba(20,22,26,0.8); padding: 10px; border: 1px solid #333; border-radius: 4px; line-height: 1.6; }
+        .c-cyan { color: var(--cyan); } .c-mag { color: var(--magenta); } .c-grn { color: var(--green); } .c-org { color: var(--orange); }
+    </style>
+</head>
+<body>
+
+<div id="ui-panel">
+    <div class="panel-header">驻波边界与共振解构系统</div>
+    
+    <div class="panel-section">
+        <div class="section-title">边界约束条件 (x = L)</div>
+        <div class="toggle-group">
+            <button id="btn-fixed" class="toggle-btn active">两端固定 (Node-Node)</button>
+            <button id="btn-free" class="toggle-btn">一端自由 (Node-Antinode)</button>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <div class="section-title">驱动频率推杆 (寻找共振点)</div>
+        <div class="control-row">
+            <span>当前频率 f</span>
+            <span id="val-f" class="c-cyan">0.25 Hz</span>
+        </div>
+        <input type="range" id="slider-f" min="0.1" max="1.5" step="0.005" value="0.25">
+        
+        <div class="data-readout">
+            <div class="data-row"><span>最近共振模式:</span> <span id="out-mode">基频 (n=1)</span></div>
+            <div class="data-row"><span>理论共振频率:</span> <span id="out-f-res">0.250 Hz</span></div>
+            <div class="data-row"><span>系统状态:</span> <span id="out-status" class="highlight-lock">已锁定 巨大振幅</span></div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <div class="section-title">波的运动学解构</div>
+        <label class="checkbox-row">
+            <input type="checkbox" id="chk-decompose"> 
+            分离行波 (左行波 + 右行波)
+        </label>
+    </div>
+</div>
+
+<div id="legend">
+    <span class="c-cyan">■</span> 系统总波 (驻波)<br>
+    <span class="c-mag">■</span> 理论包络面 (干涉极值)<br>
+    <span class="c-org" id="leg-r" style="display:none;">■</span> 右行波 (入射)<br>
+    <span class="c-grn" id="leg-l" style="display:none;">■</span> 左行波 (反射)
+</div>
+
+<div id="canvas-container"></div>
+
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ==========================================
+    // 1. 物理引擎核心参数 (强解析解驱动)
+    // ==========================================
+    const Physics = {
+        L: 20.0,            // 弦长
+        v: 10.0,            // 波速
+        A0: 0.15,           // 激振源初始振幅 (x=0处)
+        gamma: 0.05,        // 阻尼系数 (决定共振峰的锐度)
+        f: 0.25,            // 当前频率
+        mode: 0,            // 0: 两端固定, 1: 一端自由
+        decompose: false,   // 是否解构行波
+        time: 0
+    };
+
+    const N = 400; // 离散点数量 (保证波形极度平滑)
+
+    // ==========================================
+    // 2. CAD 场景与摄像机
+    // ==========================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1d21);
+    scene.fog = new THREE.FogExp2(0x1a1d21, 0.015);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    // 采用浅工业等轴测视角感觉
+    camera.position.set(12, 10, 25);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(Physics.L / 2, 0, 0);
+    controls.enableDamping = true;
+
+    // 工业网格线基底
+    const grid = new THREE.GridHelper(40, 40, 0x3a414a, 0x22262b);
+    grid.position.set(10, -5, 0);
+    scene.add(grid);
+
+    // ==========================================
+    // 3. 几何与材质系统构建
+    // ==========================================
+    // 发光线条材质 (Additive Blending 制造 Cyber 发光感)
+    const matCyan = new THREE.LineBasicMaterial({ color: 0x00ffff, blending: THREE.AdditiveBlending, depthWrite: false, linewidth: 2 });
+    const matOrg = new THREE.LineBasicMaterial({ color: 0xff9900, blending: THREE.AdditiveBlending, depthWrite: false });
+    const matGrn = new THREE.LineBasicMaterial({ color: 0x00ff88, blending: THREE.AdditiveBlending, depthWrite: false });
+    
+    // 半透明洋红包络面材质
+    const matMagenta = new THREE.MeshBasicMaterial({ 
+        color: 0xff00ff, transparent: true, opacity: 0.2, 
+        side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false 
+    });
+
+    // 创建 BufferGeometry
+    const geoSum = new THREE.BufferGeometry();
+    const geoR = new THREE.BufferGeometry();
+    const geoL = new THREE.BufferGeometry();
+    const geoEnv = new THREE.BufferGeometry();
+
+    const posSum = new Float32Array(N * 3);
+    const posR = new Float32Array(N * 3);
+    const posL = new Float32Array(N * 3);
+    const posEnv = new Float32Array((N - 1) * 6 * 3); // Triangle strips for envelope
+
+    geoSum.setAttribute('position', new THREE.BufferAttribute(posSum, 3));
+    geoR.setAttribute('position', new THREE.BufferAttribute(posR, 3));
+    geoL.setAttribute('position', new THREE.BufferAttribute(posL, 3));
+    geoEnv.setAttribute('position', new THREE.BufferAttribute(posEnv, 3));
+
+    const lineSum = new THREE.Line(geoSum, matCyan);
+    const lineR = new THREE.Line(geoR, matOrg);
+    const lineL = new THREE.Line(geoL, matGrn);
+    const meshEnv = new THREE.Mesh(geoEnv, matMagenta);
+
+    scene.add(lineSum);
+    scene.add(lineR);
+    scene.add(lineL);
+    scene.add(meshEnv);
+
+    // CAD 细节实体：两端的固定台/导轨
+    const baseGeo = new THREE.BoxGeometry(1, 2, 2);
+    const baseMat = new THREE.MeshBasicMaterial({ color: 0x555555, wireframe: true });
+    
+    // 起点发声器台座 (x=0)
+    const startBase = new THREE.Mesh(baseGeo, baseMat);
+    startBase.position.set(-0.5, 0, 0);
+    scene.add(startBase);
+
+    // 终点导轨/夹具 (x=L)
+    const endBase = new THREE.Mesh(baseGeo, baseMat);
+    endBase.position.set(Physics.L + 0.5, 0, 0);
+    scene.add(endBase);
+
+    // ==========================================
+    // 4. 物理数值计算与更新核
+    // ==========================================
+    function updatePhysicsAndGeometry() {
+        const k = (2 * Math.PI * Physics.f) / Physics.v;
+        const w = 2 * Math.PI * Physics.f;
+        
+        // 1. 解析解计算分母 D (共振项)
+        let D;
+        if (Physics.mode === 0) { // 两端固定
+            D = Math.sqrt(Math.pow(Math.sin(k * Physics.L), 2) + Math.pow(Physics.gamma, 2));
+        } else { // 一端自由
+            D = Math.sqrt(Math.pow(Math.cos(k * Physics.L), 2) + Math.pow(Physics.gamma, 2));
+        }
+
+        // 提取最大振幅用来计算包络面的透明度 (离共振点越远，包络面越不可见)
+        const maxAmp = Physics.A0 / D;
+        matMagenta.opacity = Math.min(0.25, maxAmp * 0.05); // 动态映射亮度
+
+        let envOffset = 0;
+
+        for (let i = 0; i < N; i++) {
+            const x = (i / (N - 1)) * Physics.L;
+            let ySum = 0, yR = 0, yL = 0, env = 0;
+
+            if (Physics.mode === 0) {
+                // 两端固定：通过前行波和反射波的干涉直接推导
+                // 这里的分解公式严格满足 y_R(向右) + y_L(向左) = y_Sum
+                yR = (Physics.A0 / (2 * D)) * Math.sin(k * (Physics.L - x) + w * Physics.time);
+                yL = (Physics.A0 / (2 * D)) * Math.sin(k * (Physics.L - x) - w * Physics.time);
+                
+                const amp = (Physics.A0 / D) * Math.sin(k * (Physics.L - x));
+                ySum = amp * Math.cos(w * Physics.time);
+                env = Math.abs(amp);
+            } else {
+                // 一端自由：波腹条件
+                yR = (Physics.A0 / (2 * D)) * Math.cos(k * (Physics.L - x) + w * Physics.time);
+                yL = (Physics.A0 / (2 * D)) * Math.cos(k * (Physics.L - x) - w * Physics.time);
+                
+                const amp = (Physics.A0 / D) * Math.cos(k * (Physics.L - x));
+                ySum = amp * Math.cos(w * Physics.time);
+                env = Math.abs(amp);
+            }
+
+            // 更新点坐标
+            posSum[i * 3] = x; posSum[i * 3 + 1] = ySum; posSum[i * 3 + 2] = 0;
+            posR[i * 3] = x; posR[i * 3 + 1] = yR; posR[i * 3 + 2] = 1.0; // Z轴轻微偏移防重叠
+            posL[i * 3] = x; posL[i * 3 + 1] = yL; posL[i * 3 + 2] = -1.0;
+
+            // 构建包络面几何 (两个三角形组成一个四边形切片)
+            if (i < N - 1) {
+                const x1 = x;
+                const env1 = env;
+                const x2 = ((i + 1) / (N - 1)) * Physics.L;
+                
+                // 为了避免重复计算下一个点的env，直接在循环中近似或计算
+                let env2;
+                if (Physics.mode === 0) env2 = Math.abs((Physics.A0 / D) * Math.sin(k * (Physics.L - x2)));
+                else env2 = Math.abs((Physics.A0 / D) * Math.cos(k * (Physics.L - x2)));
+
+                // Tri 1
+                posEnv[envOffset++] = x1; posEnv[envOffset++] = env1; posEnv[envOffset++] = 0;
+                posEnv[envOffset++] = x1; posEnv[envOffset++] = -env1; posEnv[envOffset++] = 0;
+                posEnv[envOffset++] = x2; posEnv[envOffset++] = env2; posEnv[envOffset++] = 0;
+                // Tri 2
+                posEnv[envOffset++] = x1; posEnv[envOffset++] = -env1; posEnv[envOffset++] = 0;
+                posEnv[envOffset++] = x2; posEnv[envOffset++] = -env2; posEnv[envOffset++] = 0;
+                posEnv[envOffset++] = x2; posEnv[envOffset++] = env2; posEnv[envOffset++] = 0;
+            }
+        }
+
+        geoSum.attributes.position.needsUpdate = true;
+        geoR.attributes.position.needsUpdate = true;
+        geoL.attributes.position.needsUpdate = true;
+        geoEnv.attributes.position.needsUpdate = true;
+    }
+
+    // ==========================================
+    // 5. UI 交互与共振数据分析
+    // ==========================================
+    const $ = (id) => document.getElementById(id);
+
+    function updateUIData() {
+        // 计算理论基频
+        const f_base_fixed = Physics.v / (2 * Physics.L); // 10 / 40 = 0.25
+        const f_base_free = Physics.v / (4 * Physics.L);  // 10 / 80 = 0.125
+        
+        let n, f_res;
+        if (Physics.mode === 0) {
+            n = Math.max(1, Math.round(Physics.f / f_base_fixed));
+            f_res = n * f_base_fixed;
+        } else {
+            // 一端自由只有奇数谐波 (2m-1)
+            let m = Math.max(1, Math.round((Physics.f + f_base_free) / (2 * f_base_free)));
+            n = 2 * m - 1; 
+            f_res = n * f_base_free;
+        }
+
+        $('out-mode').innerText = `谐波 (n=${n})`;
+        $('out-f-res').innerText = f_res.toFixed(3) + " Hz";
+
+        // 判断是否被系统锁定 (共振)
+        const diff = Math.abs(Physics.f - f_res);
+        if (diff < 0.02) {
+            $('out-status').innerText = "已锁定 (产生完美驻波)";
+            $('out-status').style.color = "var(--magenta)";
+        } else {
+            $('out-status').innerText = "杂乱状态 (反射相消)";
+            $('out-status').style.color = "#777";
+        }
+    }
+
+    $('slider-f').addEventListener('input', (e) => {
+        Physics.f = parseFloat(e.target.value);
+        $('val-f').innerText = Physics.f.toFixed(3) + " Hz";
+        updateUIData();
+    });
+
+    $('btn-fixed').addEventListener('click', (e) => {
+        Physics.mode = 0;
+        e.target.classList.add('active');
+        $('btn-free').classList.remove('active');
+        
+        // 视觉变更：固定墙
+        endBase.scale.y = 1.0; 
+        endBase.position.y = 0;
+        updateUIData();
+    });
+
+    $('btn-free').addEventListener('click', (e) => {
+        Physics.mode = 1;
+        e.target.classList.add('active');
+        $('btn-fixed').classList.remove('active');
+        
+        // 视觉变更：变成一根能让滑环上下滑动的长杆
+        endBase.scale.y = 6.0; 
+        updateUIData();
+    });
+
+    $('chk-decompose').addEventListener('change', (e) => {
+        Physics.decompose = e.target.checked;
+        if (Physics.decompose) {
+            matCyan.opacity = 0.3; // 让总和波变暗
+            lineR.visible = true;
+            lineL.visible = true;
+            $('leg-r').style.display = 'inline';
+            $('leg-l').style.display = 'inline';
+        } else {
+            matCyan.opacity = 1.0;
+            lineR.visible = false;
+            lineL.visible = false;
+            $('leg-r').style.display = 'none';
+            $('leg-l').style.display = 'none';
+        }
+    });
+
+    // 初始状态
+    lineR.visible = false;
+    lineL.visible = false;
+    updateUIData();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ==========================================
+    // 6. 渲染循环
+    // ==========================================
+    const clock = new THREE.Clock();
+    
+    function animate() {
+        requestAnimationFrame(animate);
+        Physics.time += clock.getDelta();
+        
+        updatePhysicsAndGeometry();
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+</script>
+</body>
+</html>

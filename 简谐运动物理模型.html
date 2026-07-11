@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 简谐运动与费曼猜想实验室</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.75); --primary: #00f2fe; --accent: #ff3366; --spring: #10b981; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(15px); border-radius: 12px; z-index: 10; padding: 15px; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        
+        /* 布局控制 */
+        #controls { top: 20px; left: 20px; width: 260px; }
+        /* 右侧推导区稍微加宽，以便装下完整的费曼推导过程 */
+        #math-panel { top: 20px; right: 20px; width: 420px; max-height: calc(100vh - 40px); overflow-y: auto; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        h1 { margin: 0 0 10px 0; font-size: 16px; color: var(--primary); border-bottom: 1px solid rgba(0, 242, 254, 0.2); padding-bottom: 5px; }
+        
+        .control-group { margin-bottom: 12px; }
+        label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; font-weight: 600; color: #94a3b8; }
+        select { width: 100%; padding: 8px; border-radius: 6px; background: #1a2a4a; color: #fff; border: 1px solid #3d4e7d; cursor: pointer; outline: none; font-size: 13px; }
+        input[type=range] { width: 100%; accent-color: var(--primary); cursor: pointer; }
+
+        button { width: 100%; padding: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 13px; margin-top: 5px; }
+        .btn-toggle { background: var(--primary); color: #000; }
+        .btn-reset { background: rgba(255,255,255,0.1); color: #fff; margin-top: 8px; font-size: 11px; }
+        .btn-reset:hover { background: rgba(255, 51, 102, 0.6); }
+
+        .math-step { margin-bottom: 15px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border-left: 3px solid var(--primary); font-size: 13px; line-height: 1.6; }
+        .formula-hl { color: #facc15; background: rgba(250, 204, 21, 0.05); padding: 5px 8px; border-radius: 4px; display: block; margin: 8px 0; border-left: 2px solid #facc15; }
+
+        /* 实时数据专属面板（关键：解决渲染冲突） */
+        .data-card { margin-top: 10px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; text-align: center; border: 1px solid rgba(0, 242, 254, 0.2); }
+        .data-value { font-size: 20px; font-weight: bold; font-family: 'Courier New', Courier, monospace; margin-top: 5px; }
+
+        .label-3d { font-weight: bold; font-size: 13px; text-shadow: 2px 2px 4px #000; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <h1>⚙️ 简谐运动控制台</h1>
+        <div class="control-group">
+            <label>物理模型切换</label>
+            <select id="model-select">
+                <option value="spring">垂直弹簧振子</option>
+                <option value="pendulum">单摆 (小角度)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label><span>振幅 (A / θ₀)</span> <span id="val-A" style="color:var(--primary)">2.0</span></label>
+            <input type="range" id="input-A" min="0.5" max="3.5" value="2.0" step="0.1">
+        </div>
+        <div class="control-group">
+            <label><span>角频率 (ω)</span> <span id="val-w" style="color:var(--accent)">1.5</span></label>
+            <input type="range" id="input-w" min="0.5" max="3.0" value="1.5" step="0.1">
+        </div>
+        <button id="toggle-btn" class="btn-toggle">⏸ 暂停 / 继续</button>
+        <button id="clear-btn" class="btn-reset">🗑 清除动态轨迹</button>
+        <div style="font-size: 10px; color: #64748b; margin-top: 10px; text-align: center;">按 [ P ] 键截取高清封面图</div>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <h1>📐 费曼试探解法推演 (Ansatz)</h1>
+        <div id="math-static-content">
+            </div>
+        <div class="data-card">
+            <div id="data-label" style="color: #aed9e0; font-size: 12px;">当前瞬时位移 y(t)</div>
+            <div id="data-value" class="data-value" style="color: var(--primary);">0.00</div>
+        </div>
+    </div>
+
+    <script>
+        // 全部包裹在 onload 中，确保稳定性
+        window.onload = function() {
+            // ================= 1. 环境初始化 =================
+            const scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050a15, 0.02);
+            const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 22);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            const labelRenderer = new THREE.CSS2DRenderer();
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.domElement.style.position = 'absolute';
+            labelRenderer.domElement.style.top = '0px';
+            labelRenderer.domElement.style.pointerEvents = 'none';
+            document.body.appendChild(labelRenderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableRotate = false; 
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+            sun.position.set(5, 10, 10);
+            scene.add(sun);
+
+            // ================= 2. 物理对象构建 =================
+            const originX = -5;
+            const traceSpeed = 3.0;
+            const springRestLen = 6;
+
+            const ceiling = new THREE.Mesh(new THREE.BoxGeometry(10, 0.3, 3), new THREE.MeshStandardMaterial({ color: 0x334455 }));
+            ceiling.position.set(originX, 6, 0);
+            scene.add(ceiling);
+
+            // --- 弹簧振子 ---
+            const springGroup = new THREE.Group();
+            scene.add(springGroup);
+            function createSpring() {
+                const pts = [];
+                for (let i = 0; i <= 600; i++) {
+                    const t = i / 600;
+                    const a = t * Math.PI * 2 * 16;
+                    pts.push(new THREE.Vector3(Math.cos(a)*0.4, -t*springRestLen, Math.sin(a)*0.4));
+                }
+                const geo = new THREE.BufferGeometry().setFromPoints(pts);
+                return new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 2 }));
+            }
+            const springLine = createSpring();
+            springLine.position.set(originX, 6, 0);
+            springGroup.add(springLine);
+            const mass = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 1, 32), new THREE.MeshStandardMaterial({ color: 0x10b981 }));
+            springGroup.add(mass);
+
+            // --- 单摆 ---
+            const pendulumGroup = new THREE.Group();
+            scene.add(pendulumGroup);
+            const rod = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,-springRestLen,0)]),
+                new THREE.LineBasicMaterial({ color: 0xffffff })
+            );
+            rod.position.set(originX, 6, 0);
+            pendulumGroup.add(rod);
+            const bob = new THREE.Mesh(new THREE.SphereGeometry(0.6, 32, 32), new THREE.MeshStandardMaterial({ color: 0xff3366 }));
+            bob.position.y = -springRestLen;
+            rod.add(bob);
+
+            // --- 轨迹系统 ---
+            const MAX_POINTS = 1000;
+            const traceGeo = new THREE.BufferGeometry();
+            const tracePositions = new Float32Array(MAX_POINTS * 3);
+            traceGeo.setAttribute('position', new THREE.BufferAttribute(tracePositions, 3));
+            const traceLine = new THREE.Line(traceGeo, new THREE.LineBasicMaterial({ color: 0xff3366, linewidth: 2.5 }));
+            scene.add(traceLine);
+            traceLine.geometry.setDrawRange(0, 0);
+
+            // 时间轴
+            const timeAxis = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(originX, 0, 0), new THREE.Vector3(originX + 15, 0, 0)]),
+                new THREE.LineDashedMaterial({ color: 0x445566, dashSize: 0.3, gapSize: 0.2 })
+            );
+            timeAxis.computeLineDistances();
+            scene.add(timeAxis);
+
+            // 安全的 3D 标签
+            function createLabel(text, color) {
+                const div = document.createElement('div');
+                div.className = 'label-3d';
+                div.innerHTML = text;
+                div.style.color = color;
+                div.style.fontStyle = 'italic';
+                div.style.fontFamily = 'Times New Roman, serif';
+                return new THREE.CSS2DObject(div);
+            }
+            
+            const lblY = createLabel('y / θ', '#10b981');
+            lblY.position.set(originX, 4.5, 0);
+            scene.add(lblY);
+
+            const lblT = createLabel('t', '#aed9e0');
+            lblT.position.set(originX + 15.5, 0, 0);
+            scene.add(lblT);
+
+            // ================= 3. 核心逻辑与动画 =================
+            let activeModel = 'spring';
+            let isPlaying = true;
+            let time = 0;
+            let A = 2.0;
+            let omega = 1.5;
+            let traceHistory = [];
+
+            // 包含费曼试探解法的公式更新逻辑
+            function updateMathText() {
+                const container = document.getElementById('math-static-content');
+                if (activeModel === 'spring') {
+                    container.innerHTML = `
+                        <div class="math-step"><b>1. 提出物理谜题：</b><br>结合胡克定律 $F = -ky$ 与牛顿第二定律 $F = ma$，写出微分方程：
+                        <div class="formula-hl">$$ \\frac{d^2y}{dt^2} = -\\frac{k}{m} y $$</div>
+                        寻找一个函数 $y(t)$，对其求导两次后等于它本身乘以负常数 $-\\frac{k}{m}$。</div>
+                        
+                        <div class="math-step"><b>2. 费曼大胆猜想 (Ansatz)：</b><br>自然界中周期振荡符合三角函数特性，试探性引入待定常数 $p$，猜测解为：
+                        <div class="formula-hl">$$ y(t) = A \\cos(p \\cdot t) $$</div></div>
+
+                        <div class="math-step"><b>3. 链式求导验证：</b><br>对此猜想求一阶导（速度）和二阶导（加速度）：
+                        $$ a = \\frac{d^2y}{dt^2} = -A \\cdot p^2 \\cdot \\cos(pt) = -p^2 \\cdot y $$</div>
+
+                        <div class="math-step"><b>4. 破译角频率 $\\omega$：</b><br>将数学求导的 $a = -p^2 y$ 与物理定律 $a = -\\frac{k}{m} y$ 强行画等号，解得：
+                        <div class="formula-hl">$$ p^2 = \\frac{k}{m} \\implies \\omega = \\sqrt{\\frac{k}{m}} $$</div>
+                        故位移方程为 $y(t) = A \\cos(\\omega t)$。</div>
+                    `;
+                    document.getElementById('data-label').innerText = "当前瞬时位移 y(t)";
+                    document.getElementById('data-value').style.color = "var(--spring)";
+                } else {
+                    container.innerHTML = `
+                        <div class="math-step" style="border-left-color:var(--accent)"><b>1. 提出物理谜题：</b><br>单摆回复力为重力切向分力 $F_t = -mg\\sin\\theta$。在小角度下 $\\sin\\theta \\approx \\theta$。<br>
+                        结合切向加速度 $a_t = L \\frac{d^2\\theta}{dt^2}$，得：
+                        <div class="formula-hl" style="border-left-color:var(--accent)">$$ \\frac{d^2\\theta}{dt^2} = -\\frac{g}{L} \\theta $$</div></div>
+                        
+                        <div class="math-step" style="border-left-color:var(--accent)"><b>2. 费曼大胆猜想 (Ansatz)：</b><br>根据周期特征，试探性引入待定常数 $p$，猜想角位移方程：
+                        <div class="formula-hl" style="border-left-color:var(--accent)">$$ \\theta(t) = \\theta_0 \\cos(p \\cdot t) $$</div></div>
+
+                        <div class="math-step" style="border-left-color:var(--accent)"><b>3. 链式求导验证：</b><br>对此猜想连续求导两次，得角加速度：
+                        $$ \\alpha = \\frac{d^2\\theta}{dt^2} = -\\theta_0 \\cdot p^2 \\cdot \\cos(pt) = -p^2 \\cdot \\theta $$</div>
+
+                        <div class="math-step" style="border-left-color:var(--accent)"><b>4. 破译角频率 $\\omega$：</b><br>对比数学求导结果与物理方程，必须满足：
+                        <div class="formula-hl" style="border-left-color:var(--accent)">$$ p^2 = \\frac{g}{L} \\implies \\omega = \\sqrt{\\frac{g}{L}} $$</div>
+                        故角位移方程为 $\\theta(t) = \\theta_0 \\cos(\\omega t)$。</div>
+                    `;
+                    document.getElementById('data-label').innerText = "当前瞬时角位移 θ(t)";
+                    document.getElementById('data-value').style.color = "var(--accent)";
+                }
+
+                try {
+                    if (window.MathJax && typeof MathJax.typesetPromise === 'function') {
+                        MathJax.typesetPromise();
+                    }
+                } catch (error) {
+                    console.log("公式引擎暂未就绪。");
+                }
+            }
+
+            // UI 绑定
+            document.getElementById('model-select').onchange = (e) => {
+                activeModel = e.target.value;
+                traceHistory = []; traceLine.geometry.setDrawRange(0, 0);
+                updateMathText();
+            };
+            document.getElementById('input-A').oninput = (e) => {
+                A = parseFloat(e.target.value); document.getElementById('val-A').innerText = A.toFixed(1);
+            };
+            document.getElementById('input-w').oninput = (e) => {
+                omega = parseFloat(e.target.value); document.getElementById('val-w').innerText = omega.toFixed(1);
+            };
+            document.getElementById('toggle-btn').onclick = (e) => {
+                isPlaying = !isPlaying; e.target.innerText = isPlaying ? "⏸ 暂停 / 继续" : "▶ 继续播放";
+            };
+            document.getElementById('clear-btn').onclick = () => {
+                traceHistory = []; traceLine.geometry.setDrawRange(0, 0);
+            };
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+
+                if (isPlaying) {
+                    const dt = 0.016;
+                    time += dt;
+                    const val = A * Math.cos(omega * time);
+
+                    if (activeModel === 'spring') {
+                        springGroup.visible = true; pendulumGroup.visible = false;
+                        const len = springRestLen - val;
+                        springLine.scale.y = len / springRestLen;
+                        mass.position.set(originX, 6 - len, 0);
+                        document.getElementById('data-value').innerText = val.toFixed(2) + " m";
+                    } else {
+                        springGroup.visible = false; pendulumGroup.visible = true;
+                        const theta0 = A / springRestLen;
+                        const theta = theta0 * Math.cos(omega * time);
+                        rod.rotation.z = theta;
+                        document.getElementById('data-value').innerText = (theta * 180 / Math.PI).toFixed(1) + " °";
+                    }
+
+                    // 绘制轨迹
+                    traceHistory.push({ y: val, t: time });
+                    if (traceHistory.length > MAX_POINTS) traceHistory.shift();
+
+                    const posAttr = traceLine.geometry.attributes.position.array;
+                    for (let i = 0; i < traceHistory.length; i++) {
+                        const p = traceHistory[i];
+                        posAttr[i * 3] = originX + (time - p.t) * traceSpeed;
+                        posAttr[i * 3 + 1] = p.y;
+                        posAttr[i * 3 + 2] = 0;
+                    }
+                    traceLine.geometry.attributes.position.needsUpdate = true;
+                    traceLine.geometry.setDrawRange(0, traceHistory.length);
+                }
+
+                renderer.render(scene, camera);
+                labelRenderer.render(scene, camera);
+            }
+
+            // 截图插件
+            window.addEventListener('keydown', function(e) {
+                if(e.key.toLowerCase() === 'p') {
+                    const link = document.createElement('a');
+                    link.download = '费曼简谐振动实验室.png';
+                    link.href = renderer.domElement.toDataURL('image/png');
+                    link.click();
+                    
+                    const hint = document.createElement('div');
+                    hint.innerHTML = '📸 封面已成功截取！';
+                    hint.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#00f2fe; color:#000; padding:15px 25px; border-radius:8px; font-weight:bold; z-index:9999;';
+                    document.body.appendChild(hint);
+                    setTimeout(() => hint.remove(), 2500);
+                }
+            });
+
+            window.onresize = () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            };
+
+            updateMathText();
+            animate();
+        }; 
+    </script>
+</body>
+</html>

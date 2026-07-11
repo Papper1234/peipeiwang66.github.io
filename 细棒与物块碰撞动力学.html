@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 细棒与物块碰撞动力学推演实验室</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' },
+            startup: {
+                pageReady: () => {
+                    return MathJax.startup.defaultPageReady();
+                }
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.92); --primary: #00f2fe; --text: #e2e8f0; --accent: #ff3366; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.8); backdrop-filter: blur(12px); border-radius: 12px; z-index: 10; padding: 20px; box-sizing: border-box; }
+        
+        /* 左侧控制区 */
+        #controls { top: 20px; left: 20px; width: 340px; }
+        h1 { margin: 0; font-size: 18px; color: var(--primary); border-bottom: 2px solid rgba(0, 242, 254, 0.2); padding-bottom: 10px; margin-bottom: 15px; }
+        
+        .concept-box { background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 15px; font-size: 13px; color: #aed9e0; line-height: 1.6; }
+        
+        .control-group { margin-bottom: 15px; }
+        label { display: block; font-size: 13px; margin-bottom: 8px; font-weight: 600; color: #94a3b8; }
+        select { width: 100%; padding: 8px; border-radius: 6px; background: #1a1a2e; color: #fff; border: 1px solid #334; cursor: pointer; outline: none; margin-bottom: 5px; font-weight: bold; color: #facc15;}
+
+        button { background: var(--primary); color: #000; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 14px; width: 100%; box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3); margin-bottom: 10px;}
+        button:hover { background: #00c8d2; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5); }
+        button:disabled { background: #555; color: #888; cursor: not-allowed; box-shadow: none; transform: none; }
+        .btn-reset { background: rgba(255,255,255,0.1); color: #fff; box-shadow: none;}
+        .btn-reset:hover { background: rgba(255, 51, 102, 0.8); color: #fff; box-shadow: 0 4px 15px rgba(255, 51, 102, 0.4);}
+
+        /* 右侧推导区 */
+        #math-panel { top: 20px; right: 20px; width: 560px; max-height: calc(100vh - 40px); overflow-y: auto; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        .derivation-step { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 18px; margin-bottom: 12px; border-left: 4px solid #334; display: none; opacity: 0; transition: opacity 0.5s; font-size: 14px;}
+        .derivation-step.active { display: block; opacity: 1; }
+        .step-header { font-size: 15px; font-weight: bold; color: var(--primary); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .highlight-formula { color: #facc15; font-weight: bold; background: rgba(250, 204, 21, 0.05); padding: 5px 15px; border-radius: 4px; border-left: 3px solid #facc15; margin: 8px 0;}
+
+        /* 3D 标签样式 */
+        .label-3d { font-weight: bold; font-size: 15px; pointer-events: none; text-shadow: 2px 2px 4px #000; }
+        .math-italic { font-style: italic; font-family: 'Times New Roman', serif; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <h1>⚙️ 物理分步沙盘控制</h1>
+        
+        <div id="status-box" class="concept-box">
+            <b>系统就绪</b><br>细棒质量 m，长度 l。物块质量 m，置于粗糙地面。请点击下方按钮启动第一阶段。
+        </div>
+
+        <div class="control-group">
+            <label>请预测并设定碰后的物理条件：</label>
+            <select id="condition-select">
+                <option value="forward">情形一：l > 6μs (碰后继续向右前摆)</option>
+                <option value="backward">情形二：l < 6μs (碰后反弹向左后摆)</option>
+            </select>
+        </div>
+
+        <button id="btn-next">▶ 执行阶段一：细棒自由下落</button>
+        <button id="btn-reset" class="btn-reset">↺ 重新初始化实验</button>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <div style="font-size: 18px; color: var(--primary); font-weight: bold; border-bottom: 2px solid rgba(0, 242, 254, 0.2); padding-bottom: 10px; margin-bottom: 15px;">📐 动力学全过程数学推演</div>
+        
+        <div id="math-step-1" class="derivation-step" style="border-left-color: #00f2fe;">
+            <div class="step-header">阶段一：从水平释放到竖直 (机械能守恒)</div>
+            设细棒绕转轴 O 的转动惯量 $I = \frac{1}{3}ml^2$。下落过程中只有重力做功：
+            $$ \frac{1}{2} I \omega_0^2 = mg \frac{l}{2} $$
+            解得细棒在碰撞前的瞬时角速度：
+            <div class="highlight-formula">$$ \omega_0 = \sqrt{\frac{3g}{l}} $$</div>
+        </div>
+
+        <div id="math-step-2" class="derivation-step" style="border-left-color: #ff3366;">
+            <div class="step-header">阶段二：瞬间碰撞 (角动量守恒)</div>
+            碰撞瞬间，对 O 点的外力矩为零，系统<b>角动量守恒</b>。<br>
+            设碰后物块速度为 $v$，棒角速度为 $\omega$：
+            $$ I \omega_0 = I \omega + m v l $$
+            物块滑行距离 $s$ 停止，由动能定理 $\frac{1}{2}mv^2 = \mu mgs$ 得 $v = \sqrt{2\mu gs}$。<br>
+            将 $v$ 代入角动量方程求解：
+            <div class="highlight-formula">$$ \omega = \sqrt{\frac{3g}{l}} - \frac{3}{l}\sqrt{2\mu gs} $$</div>
+            <b>摆动判定：</b>当 $l > 6\mu s$ 时，$\omega > 0$向右摆；当 $l < 6\mu s$ 时，$\omega < 0$向左弹回。
+        </div>
+
+        <div id="math-step-3" class="derivation-step" style="border-left-color: #10b981;">
+            <div class="step-header">阶段三：碰后分离运动 (求最大高度 h)</div>
+            碰后细棒上升，机械能再次守恒。设质心 C <b>上升的净高度</b>为 $\Delta h_C$：
+            $$ \frac{1}{2} I \omega^2 = mg \Delta h_C \implies \Delta h_C = \frac{l^2}{6g} \omega^2 $$
+            将上面求得的 $\omega$ 代入并进行完全平方式展开化简：
+            $$ \Delta h_C = \frac{l^2}{6g} \left( \frac{3g}{l} - \frac{6g}{l}\sqrt{\frac{6\mu s}{l}} + \frac{18\mu gs}{l^2} \right) $$
+            <div class="highlight-formula">$$ \Delta h_C = \frac{l}{2} + 3\mu s - \sqrt{6\mu sl} $$</div>
+            <b>⚠️ 概念辨析陷阱：</b><br>
+            上式正是某些标准答案给出的公式！但请注意，这是质心<b>上升的净高度</b>，而不是离地面的绝对高度。<br>
+            碰撞瞬间，质心 C 处于竖直位置，其离地面的初始高度已经是 $l/2$。所以质心离地面的<b>绝对最大高度 $h$</b> 应该是：
+            <div class="highlight-formula" style="border-left-color: #10b981;">$$ h_{总} = \frac{l}{2} + \Delta h_C = l + 3\mu s - \sqrt{6\mu sl} $$</div>
+            <i>(注：若考研/教参的最终答案仅为 $\Delta h_C$，说明出题人将其误视作了离地绝对高度，这也是经典题中常见的疏漏)</i>
+        </div>
+    </div>
+
+    <script>
+        // ================= 1. 初始化引擎 =================
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050a15, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 18); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.enableRotate = false; 
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+        sun.position.set(5, 10, 15);
+        scene.add(sun);
+
+        // ================= 2. 构建物理实体 =================
+        const l_len = 6;
+        const pivotY = 3; 
+        const groundY = pivotY - l_len; 
+        
+        const systemGroup = new THREE.Group();
+        scene.add(systemGroup);
+
+        function createLabel(text, color="#fff") {
+            const div = document.createElement('div');
+            div.className = `label-3d math-italic`;
+            div.innerHTML = text;
+            div.style.color = color;
+            return new THREE.CSS2DObject(div);
+        }
+
+        // 轴 O
+        const pivot = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1, 16), new THREE.MeshBasicMaterial({ color: 0x00f2fe }));
+        pivot.rotation.x = Math.PI / 2;
+        pivot.position.set(0, pivotY, 0);
+        scene.add(pivot);
+        const lbl_O = createLabel('O', '#00f2fe'); lbl_O.position.set(0.5, pivotY + 0.5, 0); scene.add(lbl_O);
+
+        // 细棒
+        const rodGroup = new THREE.Group();
+        rodGroup.position.set(0, pivotY, 0);
+        scene.add(rodGroup);
+        const rodGeo = new THREE.CylinderGeometry(0.1, 0.1, l_len, 32);
+        rodGeo.translate(0, -l_len/2, 0);
+        const rodMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.3 });
+        const rod = new THREE.Mesh(rodGeo, rodMat);
+        rodGroup.add(rod);
+        rodGroup.rotation.z = -Math.PI / 2; // 初始水平向左
+
+        const lbl_C = createLabel('C (质心)', '#facc15'); lbl_C.position.set(0.5, -l_len/2, 0); rodGroup.add(lbl_C);
+        const lbl_m1 = createLabel('m, l', '#fff'); lbl_m1.position.set(-0.5, -l_len/2, 0); rodGroup.add(lbl_m1);
+
+        // 地面
+        const ground = new THREE.Mesh(new THREE.BoxGeometry(20, 0.2, 2), new THREE.MeshStandardMaterial({ color: 0x334455 }));
+        ground.position.set(0, groundY - 0.1, 0);
+        scene.add(ground);
+
+        // 物块
+        const blockGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+        const blockMat = new THREE.MeshStandardMaterial({ color: 0xff3366 });
+        const block = new THREE.Mesh(blockGeo, blockMat);
+        block.position.set(0, groundY + 0.6, 0);
+        scene.add(block);
+        const lbl_m2 = createLabel('m', '#fff'); lbl_m2.position.set(0, 1.2, 0); block.add(lbl_m2);
+
+        // ================= 3. 状态机与动画逻辑 =================
+        let currentStep = 0; 
+        let animReq;
+
+        const btnNext = document.getElementById('btn-next');
+        const statusBox = document.getElementById('status-box');
+
+        function triggerMath(stepNum) {
+            document.getElementById(`math-step-${stepNum}`).classList.add('active');
+            if(window.MathJax) MathJax.typesetPromise();
+        }
+
+        btnNext.addEventListener('click', () => {
+            if (currentStep === 0) {
+                currentStep = 1;
+                btnNext.disabled = true;
+                btnNext.innerText = "动画进行中...";
+                statusBox.innerHTML = "<b>[阶段一] 细棒自由下落</b><br>重力做功，势能转化为动能。";
+                triggerMath(1);
+            } 
+            else if (currentStep === 2) {
+                currentStep = 3;
+                btnNext.disabled = true;
+                btnNext.innerText = "动画进行中...";
+                triggerMath(3);
+                
+                const condition = document.getElementById('condition-select').value;
+                if(condition === 'forward') {
+                    statusBox.innerHTML = "<b>[阶段三] 碰后分离运动 (前摆)</b><br>由于 l > 6μs，角速度 ω > 0，细棒继续向右侧升起；物块受到向右的冲量，向右滑行停止。";
+                } else {
+                    statusBox.innerHTML = "<b>[阶段三] 碰后分离运动 (后摆)</b><br>由于 l < 6μs，角速度 ω < 0，细棒被反弹回左侧；物块同样受到向右的冲量，向右滑行停止。";
+                }
+            }
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            location.reload();
+        });
+
+        function animate() {
+            animReq = requestAnimationFrame(animate);
+            controls.update();
+
+            // 阶段一：下落
+            if (currentStep === 1) {
+                rodGroup.rotation.z += 0.04;
+                if (rodGroup.rotation.z >= 0) {
+                    rodGroup.rotation.z = 0;
+                    currentStep = 2;
+                    
+                    blockMat.emissive.setHex(0xffaaaa);
+                    setTimeout(() => blockMat.emissive.setHex(0x000000), 200);
+                    
+                    statusBox.innerHTML = "<b>[阶段二] 瞬间碰撞</b><br>打击瞬间，物块获得向右的速度，系统对 O 点角动量守恒。请点击下一步观察分离。";
+                    triggerMath(2);
+                    
+                    btnNext.disabled = false;
+                    btnNext.innerText = "▶ 执行阶段三：分离与碰后运动";
+                    document.getElementById('condition-select').disabled = true; 
+                }
+            }
+
+            // 阶段三：碰后动画
+            if (currentStep === 3) {
+                // 物块向右滑动
+                if (block.position.x < 5) {
+                    block.position.x += 0.05; 
+                }
+                
+                const condition = document.getElementById('condition-select').value;
+                if (condition === 'forward') {
+                    // 前摆向右
+                    if (rodGroup.rotation.z < Math.PI / 4) {
+                        rodGroup.rotation.z += 0.015;
+                    } else {
+                        finishSim();
+                    }
+                } else {
+                    // 反弹向左
+                    if (rodGroup.rotation.z > -Math.PI / 5) {
+                        rodGroup.rotation.z -= 0.012;
+                    } else {
+                        finishSim();
+                    }
+                }
+            }
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        function finishSim() {
+            if(currentStep === 4) return;
+            currentStep = 4;
+            btnNext.innerText = "推演结束 🏁";
+            statusBox.innerHTML = "<b>推演完毕。</b><br>细棒到达最高点，物块摩擦耗尽动能。";
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if(e.key.toLowerCase() === 'p') {
+                const link = document.createElement('a');
+                link.download = 'moment_of_inertia_collision.png';
+                link.href = renderer.domElement.toDataURL();
+                link.click();
+            }
+        });
+
+        animate();
+    </script>
+</body>
+</html>

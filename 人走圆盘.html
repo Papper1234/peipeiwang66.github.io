@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 人走圆盘角动量守恒实验室</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.75); --primary: #00f2fe; --accent: #ff3366; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 12px; z-index: 10; padding: 18px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        
+        /* 窄版左侧控制区 */
+        #controls { top: 20px; left: 20px; width: 280px; }
+        h1 { margin: 0 0 12px 0; font-size: 18px; color: var(--primary); border-bottom: 1px solid rgba(0, 242, 254, 0.2); padding-bottom: 8px; }
+        .desc { font-size: 13px; color: #aed9e0; line-height: 1.5; margin-bottom: 15px; }
+        
+        /* 窄版右侧推导区 */
+        #math-panel { top: 20px; right: 20px; width: 390px; max-height: calc(100vh - 40px); overflow-y: auto; display: none; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        .math-step { margin-bottom: 20px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border-left: 3px solid #334; opacity: 0; transform: translateX(20px); transition: 0.5s; font-size: 14px; }
+        .math-step.active { opacity: 1; transform: translateX(0); border-left-color: var(--primary); }
+        .formula-hl { color: #facc15; background: rgba(250, 204, 21, 0.05); padding: 5px 10px; border-radius: 4px; display: block; margin: 8px 0; }
+
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 14px; }
+        .btn-next { background: var(--primary); color: #000; margin-top: 10px; }
+        .btn-next:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 242, 254, 0.4); }
+        .btn-reset { background: rgba(255,255,255,0.1); color: #fff; margin-top: 10px; font-size: 12px; }
+
+        .label-3d { font-weight: bold; font-size: 13px; text-shadow: 2px 2px 4px #000; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <h1>⚙️ 人走圆盘动力学实验室</h1>
+        <div id="step-desc" class="desc">
+            <b>初始状态</b>：均匀圆盘 $M$ 与人 $m$ 相对地面静止。系统对中心轴合外力矩为零，初角动量 $L=0$。
+        </div>
+
+        <button id="next-btn" class="btn-next">▶ 下一步：建立角动量积分关系</button>
+        <button onclick="location.reload()" class="btn-reset">↺ 重置实验</button>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <h1 style="font-size: 16px;">📐 标准积分法解题过程</h1>
+        
+        <div id="math-1" class="math-step">
+            <b>1. 角动量守恒积分方程</b><br>
+            设人的对地角速度为 $\omega_1$，转动惯量 $I_1 = mR^2$；<br>
+            圆盘对地角速度为 $\omega_2$，转动惯量 $I_2 = \frac{1}{2}MR^2$。<br>
+            系统角动量守恒：$I_1 \omega_1 + I_2 \omega_2 = 0$。<br>
+            两边对时间 $t$ 积分 ($\int \omega dt = \theta$) 得转角关系：
+            <div class="formula-hl">$$ I_1 \theta_1 + I_2 \theta_2 = 0 $$</div>
+            代入 $I_1, I_2$ 约去 $R^2$ 得到：
+            <div class="formula-hl">$$ 2m\theta_1 + M\theta_2 = 0 $$</div>
+        </div>
+
+        <div id="math-2" class="math-step">
+            <b>2. 相对运动条件</b><br>
+            人相对于圆盘走过一圈，即相对角位移为 $2\pi$。<br>
+            根据相对运动关系：人的对地转角 $=$ 相对转角 $+$ 盘的对地转角：
+            <div class="formula-hl">$$ \theta_1 = 2\pi + \theta_2 $$</div>
+        </div>
+
+        <div id="math-3" class="math-step">
+            <b>3. 联立求解绝对转角</b><br>
+            将上式代入 $2m(2\pi + \theta_2) + M\theta_2 = 0$，解得<b>圆盘对地的转角</b>：
+            <div class="formula-hl" style="border-left: 3px solid #00f2fe;">$$ \theta_{盘} = \theta_2 = - \frac{4\pi m}{M + 2m} $$</div>
+            将其代回，求得<b>人对地的转角</b>：
+            <div class="formula-hl" style="border-left: 3px solid #ff3366;">$$ \theta_{人} = \theta_1 = \frac{2\pi M}{M + 2m} $$</div>
+            <i>注：负号表示圆盘与人转向相反。两者的对地转角绝对值之和恰好等于一圈 $2\pi$。</i>
+        </div>
+    </div>
+
+    <script>
+        // ================= 1. 初始化引擎 =================
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050a15, 0.02);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(10, 8, 12);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const sun = new THREE.DirectionalLight(0xffffff, 1);
+        sun.position.set(5, 15, 10);
+        scene.add(sun);
+
+        // ================= 2. 构建模型 =================
+        const R = 5;
+        const diskGroup = new THREE.Group();
+        scene.add(diskGroup);
+
+        // 圆盘
+        const disk = new THREE.Mesh(
+            new THREE.CylinderGeometry(R, R, 0.2, 64),
+            new THREE.MeshStandardMaterial({ color: 0x1e4a8e, transparent: true, opacity: 0.8, metalness: 0.5 })
+        );
+        diskGroup.add(disk);
+
+        // 【修正1】使用纯正的极坐标圆形网格，彻底消除“正方形”的错觉
+        const polarGrid = new THREE.PolarGridHelper(R, 12, 4, 64, 0x00f2fe, 0x1a2a4a);
+        polarGrid.position.y = 0.11;
+        diskGroup.add(polarGrid);
+
+        // 中心转轴
+        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2, 16), new THREE.MeshBasicMaterial({ color: 0x00f2fe }));
+        scene.add(shaft);
+
+        // 人物总转动枢纽
+        const personPivot = new THREE.Group();
+        scene.add(personPivot);
+        
+        // 【修正2】纯手工打造带四肢的“奔跑火柴人”
+        const stickman = new THREE.Group();
+        stickman.position.set(R * 0.9, 0.1, 0); // 站在圆盘边缘
+        personPivot.add(stickman);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffccaa }));
+        head.position.y = 1.2;
+        stickman.add(head);
+
+        const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5), new THREE.MeshStandardMaterial({ color: 0xff3366 }));
+        torso.position.y = 0.8;
+        stickman.add(torso);
+
+        // 构造四肢枢纽（以顶部为轴点）
+        function createLimb(len, yPos, color) {
+            const pivotGroup = new THREE.Group();
+            pivotGroup.position.y = yPos;
+            const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, len), new THREE.MeshStandardMaterial({ color: color }));
+            mesh.position.y = -len / 2;
+            pivotGroup.add(mesh);
+            return pivotGroup;
+        }
+
+        const legL = createLimb(0.4, 0.55, 0xff3366);
+        const legR = createLimb(0.4, 0.55, 0xff3366);
+        const armL = createLimb(0.35, 1.0, 0xff3366);
+        const armR = createLimb(0.35, 1.0, 0xff3366);
+
+        // 微调四肢的左右位置 (X 轴沿径向，Z 轴沿切向)
+        legL.position.x = -0.1; 
+        legR.position.x = 0.1;
+        armL.position.x = -0.15;
+        armR.position.x = 0.15;
+
+        stickman.add(legL, legR, armL, armR);
+
+        // 标签
+        function createLabel(text, color) {
+            const div = document.createElement('div');
+            div.className = 'label-3d';
+            div.innerHTML = text;
+            div.style.color = color;
+            return new THREE.CSS2DObject(div);
+        }
+        stickman.add(createLabel('人 (m)', '#ff3366')).position.y = 1.6;
+        diskGroup.add(createLabel('盘 (M)', '#00f2fe')).position.set(0, -0.6, 0);
+
+        // ================= 3. 动画与阶段控制 =================
+        let stage = 0; 
+        let walkAngleRel = 0; // 人的相对转角
+        
+        // 模拟物理参数：设 M = 4m。则 I1 = mR^2 = 1， I2 = 0.5*M*R^2 = 2
+        // 人对地转角占 2/3， 盘对地转角占 -1/3
+        let I1 = 1; 
+        let I2 = 2; 
+
+        const nextBtn = document.getElementById('next-btn');
+        const descText = document.getElementById('step-desc');
+        const mathPanel = document.getElementById('math-panel');
+
+        nextBtn.addEventListener('click', () => {
+            stage++;
+            mathPanel.style.display = 'block';
+            document.getElementById(`math-${stage}`).classList.add('active');
+            if(window.MathJax) MathJax.typesetPromise();
+
+            if (stage === 1) {
+                descText.innerHTML = "<b>[阶段一] 积分守恒方程</b><br>从角动量守恒出发，积分得出人与盘的绝对转角之间存在严格的正比例关系。";
+                nextBtn.innerText = "▶ 下一步：代入相对位移";
+            } else if (stage === 2) {
+                descText.innerHTML = "<b>[阶段二] 相对运动约束</b><br>小人走完一圈，意味着人的对地转角与盘的对地转角之差刚好等于 $2\\pi$。";
+                nextBtn.innerText = "▶ 下一步：启动奔跑推演";
+            } else if (stage === 3) {
+                descText.innerHTML = "<b>[阶段三] 最终转角结算</b><br>动画启动！观察小人迈腿奔跑。由于小人质量较轻，它对地转过了大半圈，而厚重的圆盘仅反向转了一小部分。";
+                nextBtn.disabled = true;
+                nextBtn.innerText = "火柴人奔跑推演中...";
+            }
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            if (stage >= 3) {
+                if (walkAngleRel < Math.PI * 2) {
+                    const dStep = 0.02; // 相对步长
+                    walkAngleRel += dStep;
+                    
+                    // 物理联动：根据动量守恒，算出人对地和盘对地的步长
+                    const dTheta2 = - (I1 / (I1 + I2)) * dStep; // 盘的增量
+                    const dTheta1 = dStep + dTheta2;           // 人的增量
+
+                    diskGroup.rotation.y += dTheta2;
+                    personPivot.rotation.y += dTheta1;
+
+                    // 火柴人奔跑骨骼动画 (前后摆臂迈腿)
+                    const speed = walkAngleRel * 15;
+                    legL.rotation.x = Math.sin(speed) * 0.6;
+                    legR.rotation.x = Math.sin(speed + Math.PI) * 0.6;
+                    armL.rotation.x = Math.sin(speed + Math.PI) * 0.5;
+                    armR.rotation.x = Math.sin(speed) * 0.5;
+
+                    // 身体轻微起伏
+                    stickman.position.y = 0.1 + Math.abs(Math.sin(speed)) * 0.05;
+                } else {
+                    // 停下脚步，回归站立姿态
+                    legL.rotation.x = legR.rotation.x = armL.rotation.x = armR.rotation.x = 0;
+                    stickman.position.y = 0.1;
+                    nextBtn.innerText = "推演已完成 🏁";
+                }
+            }
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        // P 键截图
+        window.addEventListener('keydown', (e) => {
+            if(e.key.toLowerCase() === 'p') {
+                const link = document.createElement('a');
+                link.download = 'angular_momentum_person_disk.png';
+                link.href = renderer.domElement.toDataURL();
+                link.click();
+            }
+        });
+
+        animate();
+    </script>
+</body>
+</html>

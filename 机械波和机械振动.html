@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>机械振动与机械波传播关系 3D 演示台</title>
+    <style>
+        :root {
+            --bg: #050814;
+            --panel: rgba(15, 20, 35, 0.85);
+            --c-source: #ff3366; /* 波源颜色 */
+            --c-obs: #facc15;    /* 观察点颜色 */
+            --c-wave: #00f2fe;   /* 介质波颜色 */
+            --ctext: #e2e8f0;
+        }
+
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: var(--bg); color: var(--ctext); font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; }
+        canvas { position: absolute; top: 0; left: 0; z-index: 0; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+
+        /* UI 容器与面板 */
+        #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; pointer-events: none; z-index: 10; overflow: hidden;}
+        
+        .glass-panel {
+            pointer-events: auto; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px); border-radius: 12px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            margin: 20px; transition: 0.3s;
+        }
+
+        /* 左侧控制台 */
+        #controls { width: 320px; height: fit-content; }
+        
+        /* 右侧解析面板 */
+        #info-panel { width: 380px; position: absolute; top: 20px; right: 0; }
+
+        /* 内嵌折叠按钮 */
+        #toggle-info-btn {
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold;
+            cursor: pointer; transition: 0.3s;
+        }
+        #toggle-info-btn:hover { background: rgba(255,255,255,0.2); }
+
+        /* 折叠内容动画 */
+        #info-content {
+            transition: max-height 0.4s ease-in-out, opacity 0.3s ease-in-out, margin-top 0.3s;
+            max-height: 500px; /* 足够容纳内容的高度 */
+            opacity: 1;
+            overflow: hidden;
+        }
+        #info-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin-top: 0;
+        }
+
+        h1 { margin: 0; font-size: 18px; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8);}
+        .panel-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 12px; margin-bottom: 15px; }
+
+        .control-group { margin-bottom: 15px; background: rgba(0,0,0,0.4); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);}
+        label { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-bottom: 8px; color: #cbd5e1; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--c-wave); }
+
+        /* 左侧按钮优化布局 */
+        button.action-btn { 
+            width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: bold; font-size: 14px; 
+            cursor: pointer; transition: 0.3s; background: var(--c-wave); color: #000; margin-bottom: 10px;
+        }
+        button.action-btn:hover { transform: translateY(-1px); filter: brightness(1.1); box-shadow: 0 4px 10px rgba(0,0,0,0.3);}
+        button.action-btn.paused { background: #facc15; }
+        
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        button.secondary-btn {
+            width: 100%; padding: 10px 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); 
+            font-weight: bold; font-size: 12px; cursor: pointer; transition: 0.3s; 
+            background: rgba(255,255,255,0.05); color: #fff;
+        }
+        button.secondary-btn:hover { background: rgba(255,255,255,0.15); }
+        button.init-btn { border-color: #ff3366; color: #ff3366; background: rgba(255,51,102,0.1); }
+        button.init-btn:hover { background: rgba(255,51,102,0.2); }
+        button.shot-btn { border-color: #00ff88; color: #00ff88; background: rgba(0,255,136,0.1); }
+        button.shot-btn:hover { background: rgba(0,255,136,0.2); }
+
+        .math-box { font-size: 14px; line-height: 1.6; color: #cbd5e1; }
+        .formula { background: rgba(0,0,0,0.5); padding: 12px; border-radius: 8px; border-left: 4px solid var(--c-wave); margin: 12px 0; font-family: monospace; font-size: 14px; color: #fff; overflow-x: auto;}
+        
+        .highlight-text { font-weight: bold; color: var(--c-obs); }
+        .source-text { font-weight: bold; color: var(--c-source); }
+
+        #hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 13px; color: #94a3b8; pointer-events: none; background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(5px);}
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 18px; font-weight: bold; color: var(--c-wave); z-index: 999; }
+    </style>
+</head>
+<body>
+    <div id="loading">⚙️ 加载 3D 物理引擎...</div>
+    <canvas id="mainCanvas"></canvas>
+
+    <div id="ui-container">
+        <div id="controls" class="glass-panel">
+            <div class="panel-header" style="border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 8px; margin-bottom: 15px;">
+                <h1>⚙️ 波动力学控制台</h1>
+            </div>
+            
+            <div class="control-group">
+                <label style="color:var(--c-wave)">振幅 (A): <span id="val-A">2.0</span> m</label>
+                <input type="range" id="input-A" min="0.5" max="4.0" value="2.0" step="0.1">
+            </div>
+            <div class="control-group">
+                <label style="color:var(--c-wave)">振动圆频率 (ω): <span id="val-w">2.0</span> rad/s</label>
+                <input type="range" id="input-w" min="0.5" max="5.0" value="2.0" step="0.1">
+            </div>
+            <div class="control-group">
+                <label style="color:var(--c-wave)">波的传播速度 (v): <span id="val-v">5.0</span> m/s</label>
+                <input type="range" id="input-v" min="2.0" max="15.0" value="5.0" step="0.1">
+            </div>
+            
+            <button id="pause-btn" class="action-btn" onclick="togglePlay()">⏸ 暂停时间演化</button>
+            
+            <div class="btn-grid">
+                <button class="secondary-btn init-btn" onclick="initModel()">🔄 初始状态</button>
+                <button class="secondary-btn shot-btn" onclick="takeScreenshot()">📸 截图保存</button>
+                <button class="secondary-btn" onclick="focusObserver()">🎥 聚焦质点 P</button>
+                <button class="secondary-btn" onclick="resetCamera()">🎥 恢复全景</button>
+            </div>
+        </div>
+
+        <div id="info-panel" class="glass-panel">
+            <div class="panel-header">
+                <h1>📐 振动与波的本质</h1>
+                <button id="toggle-info-btn" onclick="toggleInfoPanel()">收起 ✖</button>
+            </div>
+            
+            <div id="info-content">
+                <div class="math-box">
+                    <div>1. <span class="source-text">波源质点 (红色, x=0)</span> 的机械振动方程：</div>
+                    <div class="formula" style="border-color: var(--c-source)">
+                        y₀(t) = A · cos(ωt)
+                    </div>
+                    
+                    <div>2. 波以速度 v 向 +x 方向传播，经过时间 t' = x/v 传到坐标为 x 的质点。任意质点的机械波方程（即延迟的振动方程）为：</div>
+                    <div class="formula">
+                        y(x, t) = A · cos[ω(t - x/v)]
+                    </div>
+                    
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2);">
+                        <b>💡 核心顿悟：</b><br>
+                        宏观上，波形在不断向右推进；<br>
+                        微观上，盯住<span class="highlight-text">黄色质点 P</span>，它<b>完全没有在 x 轴上平移</b>，它仅仅是在自己的平衡位置做上下的简谐振动！机械波传递的是“振动状态”和“能量”，而不是质点本身。
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="hint">🖱️ 拖拽旋转视角 | 滚轮缩放 | 快捷键 [P] 截图</div>
+
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        document.getElementById('loading').style.display = 'none';
+
+        // --- 初始化 Three.js ---
+        const canvas = document.getElementById('mainCanvas');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050814, 0.015);
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        // 开启 preserveDrawingBuffer 以支持 canvas.toDataURL 截图功能
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 灯光
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // --- 构建物理模型：质点链与绳子 ---
+        const N = 80;          // 质点总数
+        const dx = 0.5;        // 质点间距
+        const particles = [];
+        const obsIndex = 20;   // 观察点索引 (黄色质点 P)
+        const obsX = obsIndex * dx;
+
+        // 材质
+        const matSource = new THREE.MeshPhongMaterial({ color: 0xff3366, emissive: 0xff3366, emissiveIntensity: 0.5, shininess: 100 });
+        const matObs = new THREE.MeshPhongMaterial({ color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 0.6, shininess: 100 });
+        const matNormal = new THREE.MeshPhongMaterial({ color: 0x00f2fe, shininess: 80 });
+        const geoSphere = new THREE.SphereGeometry(0.25, 16, 16);
+
+        const particlesGroup = new THREE.Group();
+        scene.add(particlesGroup);
+
+        // 连线 (模拟介质/绳子)
+        const lineGeo = new THREE.BufferGeometry();
+        const positions = new Float32Array(N * 3);
+        lineGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x00f2fe, linewidth: 2, transparent: true, opacity: 0.6 });
+        const waveLine = new THREE.Line(lineGeo, lineMat);
+        particlesGroup.add(waveLine);
+
+        for (let i = 0; i < N; i++) {
+            let mat = matNormal;
+            if (i === 0) mat = matSource;
+            else if (i === obsIndex) mat = matObs;
+            
+            const mesh = new THREE.Mesh(geoSphere, mat);
+            if (i === 0 || i === obsIndex) mesh.scale.set(1.5, 1.5, 1.5); // 放大特定质点
+            
+            mesh.position.set(i * dx, 0, 0);
+            particlesGroup.add(mesh);
+            particles.push(mesh);
+        }
+
+        // --- 辅助参考系统 ---
+        // X 轴平衡位置基准线
+        const axisGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-2, 0, 0), new THREE.Vector3(N * dx + 2, 0, 0)]);
+        const axisMat = new THREE.LineDashedMaterial({ color: 0x475569, dashSize: 0.5, gapSize: 0.2 });
+        const axisLine = new THREE.Line(axisGeo, axisMat);
+        axisLine.computeLineDistances();
+        scene.add(axisLine);
+
+        // 观察点 P 的垂直振动导轨
+        const guideGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(obsX, -10, 0), new THREE.Vector3(obsX, 10, 0)]);
+        const guideMat = new THREE.LineBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.3 });
+        scene.add(new THREE.Line(guideGeo, guideMat));
+        
+        // --- 物理参数与核心控制 ---
+        let A = 2.0, omega = 2.0, v = 5.0, time = 0;
+        let isPlaying = true;
+        let infoVisible = true;
+
+        // UI 绑定
+        ['A', 'w', 'v'].forEach(id => {
+            document.getElementById('input-' + id).oninput = (e) => {
+                let val = parseFloat(e.target.value);
+                if (id === 'A') A = val;
+                else if (id === 'w') omega = val;
+                else if (id === 'v') v = val;
+                document.getElementById('val-' + id).innerText = val.toFixed(1);
+            };
+        });
+
+        // 1. 暂停/播放
+        window.togglePlay = function() {
+            isPlaying = !isPlaying;
+            const btn = document.getElementById('pause-btn');
+            btn.innerText = isPlaying ? "⏸ 暂停时间演化" : "▶ 恢复时间演化";
+            if(isPlaying) btn.classList.remove('paused');
+            else btn.classList.add('paused');
+        };
+
+        // 2. 面板展开/收起 (内嵌平滑折叠)
+        window.toggleInfoPanel = function() {
+            infoVisible = !infoVisible;
+            const content = document.getElementById('info-content');
+            const btn = document.getElementById('toggle-info-btn');
+            if(infoVisible) {
+                content.classList.remove('collapsed');
+                btn.innerHTML = "收起 ✖";
+            } else {
+                content.classList.add('collapsed');
+                btn.innerHTML = "展开 ▼";
+            }
+        };
+
+        // 3. 一键初始化重置
+        window.initModel = function() {
+            A = 2.0; omega = 2.0; v = 5.0; time = 0;
+            isPlaying = true;
+
+            document.getElementById('input-A').value = A;
+            document.getElementById('val-A').innerText = A.toFixed(1);
+            document.getElementById('input-w').value = omega;
+            document.getElementById('val-w').innerText = omega.toFixed(1);
+            document.getElementById('input-v').value = v;
+            document.getElementById('val-v').innerText = v.toFixed(1);
+
+            const pBtn = document.getElementById('pause-btn');
+            pBtn.innerText = "⏸ 暂停时间演化";
+            pBtn.classList.remove('paused');
+
+            resetCamera();
+        };
+
+        // 摄像机控制
+        window.resetCamera = function() {
+            camera.position.set(15, 10, 25);
+            controls.target.set(10, 0, 0);
+        };
+        window.focusObserver = function() {
+            camera.position.set(obsX, 5, 15);
+            controls.target.set(obsX, 0, 0);
+        };
+
+        // --- 截图保存功能 ---
+        window.takeScreenshot = function() {
+            renderer.render(scene, camera); // 确保渲染最新帧
+            
+            const link = document.createElement('a');
+            link.download = `Wave_Vibration_Snapshot_${new Date().getTime()}.png`;
+            link.href = renderer.domElement.toDataURL('image/png'); 
+            link.click();
+            
+            // 提示 Toast
+            const hint = document.createElement('div');
+            hint.innerHTML = '📸 高清实验配图已保存！';
+            hint.style.cssText = 'position:fixed; top:30px; left:50%; transform:translateX(-50%); background:var(--c-wave); color:#000; padding:15px 30px; border-radius:12px; font-weight:bold; font-size:16px; z-index:9999; box-shadow: 0 8px 30px rgba(0,0,0,0.5); transition: opacity 0.5s;';
+            document.body.appendChild(hint);
+            
+            setTimeout(() => { 
+                hint.style.opacity = '0'; 
+                setTimeout(() => hint.remove(), 500); 
+            }, 2000);
+        };
+
+        // 快捷键
+        window.addEventListener('keydown', function(e) {
+            if(e.key.toLowerCase() === 'p') {
+                takeScreenshot();
+            }
+        });
+
+        resetCamera();
+
+        // --- 核心渲染循环 ---
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            if (isPlaying) {
+                let dt = clock.getDelta();
+                if (dt > 0.1) dt = 0.1; 
+                time += dt;
+            } else {
+                clock.getDelta(); 
+            }
+
+            const linePositions = waveLine.geometry.attributes.position.array;
+            
+            for (let i = 0; i < N; i++) {
+                const x = i * dx;
+                let y = 0;
+                
+                // 波传播判定
+                if (time >= x / v) {
+                    y = A * Math.cos(omega * (time - x / v));
+                }
+
+                particles[i].position.y = y;
+                
+                linePositions[i * 3] = x;
+                linePositions[i * 3 + 1] = y;
+                linePositions[i * 3 + 2] = 0;
+            }
+            waveLine.geometry.attributes.position.needsUpdate = true;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

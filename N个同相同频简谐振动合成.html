@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 多谐振动合成：旋转矢量多边形深度推演台</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$']] },
+            svg: { fontCache: 'global' },
+            startup: { typeset: false }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.85); --c-vec: #00f2fe; --c-sum: #00ff88; --c-geo: #facc15; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(15px); border-radius: 12px; z-index: 10; padding: 20px; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.6); }
+        
+        #controls { top: 20px; left: 20px; width: 320px; }
+        #math-panel { top: 20px; right: 20px; width: 480px; max-height: calc(100vh - 40px); overflow-y: auto; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        h1 { margin: 0 0 15px 0; font-size: 18px; color: #fff; border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding-bottom: 10px; display: flex; align-items: center; gap: 8px;}
+        
+        .control-group { margin-bottom: 15px; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);}
+        label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; font-weight: bold; color: #cbd5e1; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--c-vec); }
+        
+        button.action-btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 15px; margin-top: 5px; background: var(--c-vec); color: #000; box-shadow: 0 4px 15px rgba(0, 242, 254, 0.4);}
+        button.action-btn:hover { background: #00d2ff; transform: translateY(-2px); }
+        
+        .step-indicator { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .step-dot { width: 26px; height: 26px; border-radius: 50%; background: #334155; display: flex; justify-content: center; align-items: center; font-size: 13px; font-weight: bold; color: #fff; transition: 0.3s;}
+        .step-dot.active { background: var(--c-sum); color: #000; box-shadow: 0 0 10px var(--c-sum); }
+
+        .math-step { margin-bottom: 15px; padding: 15px; background: rgba(255,255,255,0.03); border-radius: 10px; font-size: 14px; line-height: 1.7; border-left: 4px solid #475569; transition: 0.3s;}
+        .math-step.active { border-left-color: var(--c-sum); background: rgba(0, 255, 136, 0.05); }
+        .math-step b { color: var(--c-sum); font-size: 15px; display: block; margin-bottom: 8px; border-bottom: 1px dashed rgba(0,255,136,0.3); padding-bottom: 5px;}
+        .formula-hl { background: rgba(255, 255, 255, 0.05); padding: 10px; border-radius: 6px; display: block; margin: 10px 0; border-left: 3px solid var(--c-geo); font-family: monospace; overflow-x: auto;}
+
+        .label-3d { font-weight: bold; font-size: 14px; padding: 2px 8px; border-radius: 4px; color: #fff; text-shadow: 1px 1px 4px #000; pointer-events: none;}
+        
+        #hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 13px; color: #94a3b8; pointer-events: none; text-align: center; line-height: 1.5;}
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <h1>⚙️ 参数控制台</h1>
+        
+        <div class="control-group">
+            <label><span>振动个数 (N)</span> <span id="val-N">5</span></label>
+            <input type="range" id="input-N" min="2" max="20" value="5" step="1">
+            
+            <label style="margin-top:15px;"><span>分振幅 (a)</span> <span id="val-a">1.0</span></label>
+            <input type="range" id="input-a" min="0.5" max="3.0" value="1.0" step="0.1">
+            
+            <label style="margin-top:15px;"><span>恒定相差 (φ₀)</span> <span id="val-p0">30°</span></label>
+            <input type="range" id="input-p0" min="0" max="90" value="30" step="1">
+        </div>
+
+        <button id="next-step-btn" class="action-btn">▶ 下一步：推演开始</button>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <h1>📐 旋转矢量法：推演笔记</h1>
+        
+        <div class="step-indicator">
+            <div class="step-dot active" id="dot-1">1</div>
+            <div class="step-dot" id="dot-2">2</div>
+            <div class="step-dot" id="dot-3">3</div>
+            <div class="step-dot" id="dot-4">4</div>
+            <div class="step-dot" id="dot-5">5</div>
+        </div>
+
+        <div id="math-content"></div>
+    </div>
+    
+    <div id="hint">
+        🖱️ 拖拽旋转空间视角 | 滚轮缩放<br>
+        <span style="color: var(--c-sum); font-weight:bold;">键盘 [ P ] 键截取 4K 高清实验配图</span>
+    </div>
+
+    <script>
+        window.onload = function() {
+            // ================= 1. 引擎初始化 =================
+            const scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050a15, 0.015);
+            const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, -10, 30); // 略微倾斜观察
+
+            // 【关键配置】开启 preserveDrawingBuffer 以支持 canvas 截图
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            const labelRenderer = new THREE.CSS2DRenderer();
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.domElement.style.position = 'absolute';
+            labelRenderer.domElement.style.top = '0px';
+            labelRenderer.domElement.style.pointerEvents = 'none';
+            document.body.appendChild(labelRenderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            // 基础网格辅助
+            const gridHelper = new THREE.GridHelper(40, 40, 0x334155, 0x1e293b);
+            gridHelper.rotation.x = Math.PI / 2; // XY平面网格
+            scene.add(gridHelper);
+
+            // ================= 2. 状态与组管理 =================
+            let N = 5, a = 1.0, phi0_deg = 30;
+            let currentStep = 1;
+            let isAnimating = false;
+            let time = 0; const omega = 1.5;
+
+            // 旋转矢量的主容器（用于步骤5的整体旋转）
+            const rotorGroup = new THREE.Group();
+            scene.add(rotorGroup);
+
+            const vectorsGroup = new THREE.Group(); // 存放蓝色分矢量
+            const resultantGroup = new THREE.Group(); // 存放绿色合矢量
+            const geometryGroup = new THREE.Group();  // 存放外接圆与辅助线
+            const labelsGroup = new THREE.Group();    // 存放文本标签
+
+            rotorGroup.add(vectorsGroup);
+            rotorGroup.add(resultantGroup);
+            rotorGroup.add(geometryGroup);
+            rotorGroup.add(labelsGroup);
+
+            // 辅助函数：创建 3D 文本
+            function createLabel(text, color) {
+                const div = document.createElement('div');
+                div.className = 'label-3d'; div.innerHTML = text; div.style.color = color;
+                const obj = new THREE.CSS2DObject(div);
+                return obj;
+            }
+
+            // ================= 3. 核心几何构建逻辑 =================
+            function rebuildGeometry() {
+                // 清理旧图形
+                [vectorsGroup, resultantGroup, geometryGroup, labelsGroup].forEach(g => {
+                    while(g.children.length > 0) g.remove(g.children[0]);
+                });
+                rotorGroup.rotation.z = 0; // 重置旋转
+                time = 0;
+
+                const phi0_rad = phi0_deg * Math.PI / 180;
+                let currentPos = new THREE.Vector3(0,0,0);
+                let currentAngle = 0;
+                
+                // 标签 O (原点)
+                if(currentStep >= 1) {
+                    const lblO = createLabel('O', '#fff');
+                    lblO.position.set(-0.5, -0.5, 0);
+                    labelsGroup.add(lblO);
+                }
+
+                // --- Step 1: 首尾相接的 N 个分矢量 ---
+                if (currentStep >= 1) {
+                    for(let i=0; i<N; i++) {
+                        let dir = new THREE.Vector3(Math.cos(currentAngle), Math.sin(currentAngle), 0);
+                        let arrow = new THREE.ArrowHelper(dir, currentPos, a, 0x00f2fe, a*0.2, a*0.1);
+                        vectorsGroup.add(arrow);
+                        
+                        // 绘制偏折角圆弧辅助线
+                        if(i > 0 && phi0_rad > 0) {
+                            let arcCurve = new THREE.EllipseCurve(currentPos.x, currentPos.y, a*0.3, a*0.3, currentAngle - phi0_rad, currentAngle, false, 0);
+                            let arcLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcCurve.getPoints(20)), new THREE.LineBasicMaterial({color: 0x94a3b8}));
+                            vectorsGroup.add(arcLine);
+                        }
+
+                        currentPos.add(dir.multiplyScalar(a));
+                        currentAngle += phi0_rad;
+                    }
+                }
+
+                const endPos = currentPos.clone();
+
+                // --- Step 2: 合矢量 A ---
+                if (currentStep >= 2) {
+                    let A_length = endPos.length();
+                    if(A_length > 0.001) {
+                        let A_dir = endPos.clone().normalize();
+                        let arrowA = new THREE.ArrowHelper(A_dir, new THREE.Vector3(0,0,0), A_length, 0x00ff88, A_length*0.1, A_length*0.05);
+                        resultantGroup.add(arrowA);
+                        
+                        const lblA = createLabel('A', '#00ff88');
+                        lblA.position.copy(endPos.clone().multiplyScalar(0.5).add(new THREE.Vector3(-0.5, 0.5, 0)));
+                        labelsGroup.add(lblA);
+                    }
+                }
+
+                // --- Step 3 & 4: 外接圆与几何中心 ---
+                if (currentStep >= 3 && phi0_rad > 0) {
+                    // 圆心推导：C = (a/2, (a/2) * cot(phi0/2))
+                    const cotHalfPhi = 1.0 / Math.tan(phi0_rad / 2);
+                    const cx = a / 2;
+                    const cy = (a / 2) * cotHalfPhi;
+                    const center = new THREE.Vector3(cx, cy, 0);
+                    const R = a / (2 * Math.sin(phi0_rad / 2));
+
+                    // 绘制外接圆 (虚线)
+                    const circleCurve = new THREE.EllipseCurve(center.x, center.y, R, R, 0, 2*Math.PI, false, 0);
+                    const circleGeo = new THREE.BufferGeometry().setFromPoints(circleCurve.getPoints(64));
+                    const circleLine = new THREE.Line(circleGeo, new THREE.LineDashedMaterial({color: 0xfacc15, dashSize: 0.2, gapSize: 0.2, transparent:true, opacity:0.5}));
+                    circleLine.computeLineDistances();
+                    geometryGroup.add(circleLine);
+
+                    // 绘制中心点 C
+                    const centerDot = new THREE.Mesh(new THREE.CircleGeometry(0.1, 16), new THREE.MeshBasicMaterial({color: 0xfacc15}));
+                    centerDot.position.copy(center);
+                    geometryGroup.add(centerDot);
+                    const lblC = createLabel('C', '#facc15');
+                    lblC.position.copy(center.clone().add(new THREE.Vector3(0, 0.5, 0)));
+                    labelsGroup.add(lblC);
+
+                    // 绘制两条关键半径 (到原点和终点)
+                    const rMat = new THREE.LineBasicMaterial({color: 0xfacc15, transparent:true, opacity:0.8});
+                    geometryGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([center, new THREE.Vector3(0,0,0)]), rMat));
+                    geometryGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([center, endPos]), rMat));
+                    
+                    // R 标签
+                    const lblR = createLabel('R', '#facc15');
+                    lblR.position.copy(center.clone().multiplyScalar(0.5).add(new THREE.Vector3(0.5,0,0)));
+                    labelsGroup.add(lblR);
+                }
+                
+                // 触发渲染
+                updateMathJax();
+            }
+
+            // ================= 4. UI 与推演文案逻辑 =================
+            ['N','a','p0'].forEach(id => {
+                document.getElementById('input-'+id).oninput = (e) => {
+                    let val = parseFloat(e.target.value);
+                    if(id==='N') N = val; else if(id==='a') a = val; else phi0_deg = val;
+                    document.getElementById('val-'+id).innerText = val + (id==='p0'?'°':'');
+                    
+                    // 修改参数时重置回第一步
+                    currentStep = 1; isAnimating = false;
+                    updateUIState();
+                };
+            });
+
+            const btnNext = document.getElementById('next-step-btn');
+            btnNext.onclick = () => {
+                if(currentStep < 5) {
+                    currentStep++;
+                    if(currentStep === 5) isAnimating = true;
+                    updateUIState();
+                } else {
+                    // Reset
+                    currentStep = 1;
+                    isAnimating = false;
+                    updateUIState();
+                }
+            };
+
+            let mathJaxPromise = Promise.resolve();
+            function updateMathJax() {
+                if (window.MathJax && MathJax.typesetPromise) {
+                    mathJaxPromise = mathJaxPromise.then(() => {
+                        MathJax.typesetClear([document.getElementById('math-content')]);
+                        return MathJax.typesetPromise([document.getElementById('math-content')]);
+                    }).catch(err => console.log('MathJax Error:', err));
+                }
+            }
+
+            function updateUIState() {
+                // 更新顶部进度点
+                for(let i=1; i<=5; i++) {
+                    let dot = document.getElementById('dot-'+i);
+                    if(i === currentStep) dot.classList.add('active');
+                    else dot.classList.remove('active');
+                }
+
+                // 按钮文案
+                const btnTexts = ["▶ 1. 构造多边形矢量", "▶ 2. 闭合求合矢量 A", "▶ 3. 寻找几何外接圆", "▶ 4. 几何公式推导", "▶ 5. 整体旋转演化 (播放)"];
+                if(currentStep === 5) btnNext.innerText = "🔄 重置推演";
+                else btnNext.innerText = btnTexts[currentStep];
+
+                // 动态更新推导文案
+                const content = document.getElementById('math-content');
+                
+                const A_val = (phi0_deg === 0) ? (N * a) : (a * Math.sin(N * phi0_deg * Math.PI / 360) / Math.sin(phi0_deg * Math.PI / 360));
+                const Phi_deg = (N - 1) * phi0_deg / 2;
+
+                let html = "";
+                if(currentStep >= 1) html += `
+                    <div class="math-step active">
+                        <b>步骤 1：折线多边形构造</b>
+                        给定 $N=${N}$ 个简谐振动：
+                        $$ x_1 = a \\cos(\\omega t) $$
+                        $$ x_2 = a \\cos(\\omega t + \\phi_0) $$
+                        $$ \\cdots $$
+                        $$ x_N = a \\cos[\\omega t + (N-1)\\phi_0] $$
+                        我们将它们映射为平面内的旋转矢量。每个矢量长度为 $a=${a}$，相邻相位差恒为 $\\phi_0=${phi0_deg}^\\circ$。将它们<b>首尾相接</b>，由于每次偏折角度相同，构成了一个正多边形的一段折线。
+                    </div>`;
+                
+                if(currentStep >= 2) html += `
+                    <div class="math-step active">
+                        <b>步骤 2：合矢量 $\\vec{A}$ 的几何定义</b>
+                        根据叠加原理，合振动等价于从起点 $O$ 直接指向第 $N$ 个矢量终点的合矢量 $\\vec{A}$（图中绿色箭头）。我们的目标是求出它的长度 $A$ 和相对于起点的夹角 $\\Phi$。
+                    </div>`;
+
+                if(currentStep >= 3) html += `
+                    <div class="math-step active">
+                        <b>步骤 3：桥接中心与外接圆</b>
+                        因为多边形折线各边等长且偏折角相等，其顶点必然共圆。我们在几何上作各边的垂直平分线，交点即为圆心 $C$（黄色点）。设外接圆（黄色虚线）半径为 $R$。
+                    </div>`;
+
+                if(currentStep >= 4) html += `
+                    <div class="math-step active">
+                        <b>步骤 4：核心数学推演：消去 $R$</b>
+                        我们在图中提取两个等腰三角形进行对比：<br><br>
+                        (1) <b>对于单个分矢量：</b>连接圆心 $C$ 与分矢量首尾。该等腰三角形底边为 $a$，腰长为 $R$。由几何关系，它所对的圆心角恰好等于偏折角 $\\phi_0$。作垂线可得：
+                        $$ \\sin\\left(\\frac{\\phi_0}{2}\\right) = \\frac{a/2}{R} \\implies R = \\frac{a}{2\\sin(\\frac{\\phi_0}{2})} $$
+                        <br>
+                        (2) <b>对于总合矢量：</b>连接圆心 $C$ 与原点和终点。该等腰三角形底边为 $A$，腰长同为 $R$。由于它横跨了 $N$ 个分矢量，其总圆心角为 $N\\phi_0$。同理：
+                        $$ \\sin\\left(\\frac{N\\phi_0}{2}\\right) = \\frac{A/2}{R} \\implies A = 2R\\sin\\left(\\frac{N\\phi_0}{2}\\right) $$
+                        <br>
+                        将 (1) 中求出的 $R$ 代入 (2)，立刻得到<b>合振幅公式</b>：
+                        <div class="formula-hl">$$ A = a \\frac{\\sin(\\frac{N\\phi_0}{2})}{\\sin(\\frac{\\phi_0}{2})} \\approx ${A_val.toFixed(2)} $$</div>
+                        <br>
+                        (3) <b>初相的对称性证明：</b>整个折线具有完美的轴对称性。第一个矢量相角为 $0$，第 $N$ 个矢量相角为 $(N-1)\\phi_0$。合矢量必然沿对称轴方向，即首尾相角的中点：
+                        <div class="formula-hl">$$ \\Phi = \\frac{0 + (N-1)\\phi_0}{2} = \\frac{N-1}{2}\\phi_0 = ${Phi_deg.toFixed(1)}^\\circ $$</div>
+                    </div>`;
+
+                if(currentStep >= 5) html += `
+                    <div class="math-step active" style="border-left-color: #00ff88; background: rgba(0,255,136,0.1);">
+                        <b>步骤 5：系统整体时间演化</b>
+                        一切推演完毕。由于所有分振动频率 $\\omega$ 相同，整个外接圆刚体结构以统一的角速度绕原点 $O$ 逆时针旋转。<br>
+                        我们在坐标轴上的最终合振动表达式为：
+                        <div class="formula-hl">$$ x = ${A_val.toFixed(2)} \\cos(\\omega t + ${Phi_deg.toFixed(1)}^\\circ) $$</div>
+                    </div>`;
+
+                content.innerHTML = html;
+                
+                // 重建 3D 几何图形
+                rebuildGeometry();
+            }
+
+            // ================= 5. 截图小程序集成 =================
+            window.addEventListener('keydown', function(e) {
+                if(e.key.toLowerCase() === 'p') {
+                    const link = document.createElement('a');
+                    link.download = `Polygon_Phasor_Step_${currentStep}.png`;
+                    link.href = renderer.domElement.toDataURL('image/png'); 
+                    link.click();
+                    
+                    const hint = document.createElement('div');
+                    hint.innerHTML = '📸 高清实验配图已保存！';
+                    hint.style.cssText = 'position:fixed; top:30px; left:50%; transform:translateX(-50%); background:var(--c-sum); color:#000; padding:15px 30px; border-radius:12px; font-weight:bold; font-size:16px; z-index:9999; box-shadow: 0 8px 30px rgba(0,0,0,0.5); transition: opacity 0.5s;';
+                    document.body.appendChild(hint);
+                    setTimeout(() => { hint.style.opacity = '0'; setTimeout(()=>hint.remove(), 500); }, 2000);
+                }
+            });
+
+            // ================= 6. 主循环 =================
+            const clock = new THREE.Clock();
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+
+                // 只有进入第5步才开始旋转
+                if (isAnimating && currentStep === 5) {
+                    let dt = clock.getDelta();
+                    if(dt > 0.1) dt = 0.1;
+                    time += dt;
+                    rotorGroup.rotation.z = omega * time;
+                } else {
+                    clock.getDelta(); // 清除累计时间
+                }
+
+                renderer.render(scene, camera);
+                labelRenderer.render(scene, camera);
+            }
+
+            window.onresize = () => {
+                camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight); labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            };
+
+            // 启动
+            updateUIState();
+            animate();
+        }; 
+    </script>
+</body>
+</html>

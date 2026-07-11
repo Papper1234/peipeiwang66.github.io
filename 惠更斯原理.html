@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>惠更斯原理：衍射与波前重构探索 (修复版)</title>
+    <style>
+        :root {
+            --bg-color: #111114;
+            --text-color: #e0e0e0;
+            --panel-bg: rgba(25, 25, 30, 0.95);
+            --border-color: #444;
+            --accent-blue: #00bcd4;
+            --accent-yellow: #ffd740;
+            --accent-red: #ff5252;
+            --hover-color: #333;
+        }
+        body { margin: 0; overflow: hidden; background-color: var(--bg-color); color: var(--text-color); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        /* CAD 风格 UI 侧边栏 */
+        #ui-panel {
+            position: absolute; top: 20px; right: 20px; width: 330px; z-index: 10;
+            background: var(--panel-bg); border: 1px solid var(--border-color);
+            border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+            display: flex; flex-direction: column; max-height: calc(100vh - 40px); overflow-y: auto;
+        }
+        .panel-header { padding: 18px 20px; border-bottom: 1px solid var(--border-color); font-weight: bold; color: #fff; letter-spacing: 1px; font-size: 14px; text-transform: uppercase; }
+        .panel-section { padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
+        .panel-section:last-child { border-bottom: none; }
+        .section-title { font-size: 12px; color: #888; margin-bottom: 12px; text-transform: uppercase; font-weight: bold;}
+
+        /* 控件样式 */
+        .control-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
+        .control-label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+        
+        button.ctrl-btn {
+            width: 100%; padding: 10px; background: #2d2d30; border: 1px solid var(--border-color);
+            color: var(--text-color); text-align: left; cursor: pointer;
+            border-radius: 4px; font-size: 13px; transition: all 0.2s; font-family: inherit;
+        }
+        button.ctrl-btn:hover { background: var(--hover-color); }
+
+        button.active-mode { background: #094771; border-color: var(--accent-blue); color: #fff; font-weight: bold; }
+        button.active-aperture { background: #420909; border-color: var(--accent-red); color: #fff; font-weight: bold; }
+        
+        .toggle-group { display: flex; gap: 8px; margin-bottom: 15px; }
+        .toggle-group button { flex: 1; text-align: center; }
+
+        /* 滑动条样式 */
+        input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent-blue); cursor: pointer; }
+        
+        /* 物理文本展示区 */
+        #physics-box {
+            background: #111; padding: 15px; border-radius: 4px; border: 1px solid var(--border-color);
+            font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.7; color: #b5cea8;
+        }
+        .math { color: var(--accent-yellow); font-style: italic; }
+        .highlight { color: var(--accent-blue); font-weight: bold; }
+        .highlight-red { color: var(--accent-red); font-weight: bold; }
+
+        #axis-legend {
+            position: absolute; bottom: 20px; left: 20px; z-index: 10;
+            font-family: 'Consolas', monospace; font-size: 12px; color: #aaa;
+            background: rgba(20,20,20,0.85); padding: 12px; border: 1px solid #444; border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-panel">
+    <div class="panel-header">惠更斯原理：衍射与重构</div>
+    
+    <div class="panel-section">
+        <div class="section-title">波源模式</div>
+        <div class="toggle-group">
+            <button id="btn-spherical" class="ctrl-btn active-mode">球面波</button>
+            <button id="btn-plane" class="ctrl-btn">平面波</button>
+        </div>
+        
+        <div class="control-group">
+            <div class="control-label">波速 <span class="math">v</span> <span id="val-speed">1.0</span></div>
+            <input type="range" id="slider-speed" min="0.1" max="2" step="0.1" value="1.0">
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <div class="section-title">障碍物设置</div>
+        <button id="btn-toggleAperture" class="ctrl-btn">添加衍射小孔墙 (<span id="status-aperture">无</span>)</button>
+        <div id="aperture-controls" style="display:none; margin-top:10px;">
+            <div class="control-label">孔径大小 <span id="val-apertureSize">1.0</span></div>
+            <input type="range" id="slider-apertureSize" min="0.2" max="3" step="0.1" value="1.0">
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <div class="section-title">惠更斯子波采样设置</div>
+        <div class="control-group">
+            <div class="control-label">子波密度 (采样点) <span id="val-density">50</span></div>
+            <input type="range" id="slider-density" min="10" max="200" step="10" value="50">
+        </div>
+        <div class="control-group">
+            <div class="control-label">波前采样时刻 <span class="math">T</span> <span id="val-sampleTime">3.0</span></div>
+            <input type="range" id="slider-sampleTime" min="0.5" max="6" step="0.1" value="3.0">
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <div id="physics-box">
+            <!-- 动态注入物理说明 -->
+        </div>
+    </div>
+</div>
+
+<div id="axis-legend">
+    <span style="color:#ff6b6b">X轴(红): 传播路径</span><br>
+    <span style="color:#ffd740">橙色球/点: 惠更斯子波源</span><br>
+    <span style="color:#00bcd4">蓝色面: 主波前 (扩散/通过孔后)</span><br>
+    <span style="color:#ff5252">红色面: 障碍物墙</span>
+</div>
+
+<div id="canvas-container"></div>
+
+<!-- Import Map -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ==========================================
+    // 1. 物理引擎与状态管理
+    // ==========================================
+    const Physics = {
+        speed: 1.0,         // v
+        sampleTime: 3.0,    // T
+        density: 50,        // N
+        mode: 'spherical',  // 'spherical' 或 'plane'
+        showAperture: false,// 障碍物小孔开关
+        apertureSize: 1.0,  // 小孔半径
+        apertureX: 3.0      // 小孔所在墙的 X 位置
+    };
+
+    const State = {
+        time: 0,
+        spawned: false,
+        wavelets: [],       // 存储子波 Mesh
+        preApertureFront: null // 障碍物前的蓝色波前 Mesh
+    };
+
+    // ==========================================
+    // 2. 场景与 CAD 渲染器设置
+    // ==========================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111114);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(15, 12, 18);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 0, 0);
+
+    // 工业级风格网格与坐标轴
+    scene.add(new THREE.GridHelper(50, 50, 0x333333, 0x222222));
+    scene.add(new THREE.AxesHelper(10));
+
+    // 物理正确的光照
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(10, 15, 10);
+    scene.add(directionalLight);
+
+    // ==========================================
+    // 3. 构建波分量与障碍物
+    // ==========================================
+    const waveGroup = new THREE.Group();
+    scene.add(waveGroup);
+
+    // [材质定义]
+    const mainFrontMat = new THREE.MeshLambertMaterial({ color: 0x00bcd4, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false });
+    const waveletFrontMat = new THREE.MeshLambertMaterial({ color: 0xffd740, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false });
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0xff5252, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+
+    // [对象持有]
+    let obstacleWallMesh = null;
+    let waveletSourcesMesh = null; // 点
+
+    // 生成带圆孔的墙的纹理 (Alpha Map)
+    function createApertureTexture(size, radius) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+        
+        // 填充不透明背景 (代表墙)
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // 在中心绘制透明圆孔
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        // 将物理尺寸半径映射到画布坐标
+        const canvasRadius = (radius / (size / 2)) * (canvas.width / 2);
+        ctx.arc(canvas.width / 2, canvas.height / 2, canvasRadius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        return texture;
+    }
+
+    // 更新障碍物墙 (添加/移除障碍物墙)
+    function updateObstacleWall() {
+        if (obstacleWallMesh) {
+            scene.remove(obstacleWallMesh);
+            obstacleWallMesh = null;
+        }
+        
+        if (!Physics.showAperture) return;
+
+        const wallSize = 30;
+        // 使用自定义 Alpha Map 纹理来创建孔
+        const alphaMap = createApertureTexture(wallSize, Physics.apertureSize);
+        const wallGeom = new THREE.PlaneGeometry(wallSize, wallSize);
+        wallGeom.rotateY(Math.PI / 2); // 垂直于传播 X轴
+
+        const mat = wallMat.clone();
+        mat.alphaMap = alphaMap;
+        mat.transparent = true;
+
+        obstacleWallMesh = new THREE.Mesh(wallGeom, mat);
+        obstacleWallMesh.position.x = Physics.apertureX;
+        scene.add(obstacleWallMesh);
+    }
+
+    // 4. 初始化/重置场景函数
+    function resetWaveScene() {
+        // [修复] 彻底清理旧 Mesh，防止内存泄漏和重叠
+        if (State.preApertureFront) {
+            waveGroup.remove(State.preApertureFront);
+            State.preApertureFront = null;
+        }
+        if (waveletSourcesMesh) {
+            waveGroup.remove(waveletSourcesMesh);
+            waveletSourcesMesh = null;
+        }
+        State.wavelets.forEach(w => waveGroup.remove(w));
+        State.wavelets = [];
+        
+        // 确保障碍物同步
+        updateObstacleWall();
+
+        // 核心教案逻辑调整：如果开启小孔，采样时刻 T 必须与波到达墙的时间匹配
+        if (Physics.showAperture) {
+            Physics.sampleTime = Physics.apertureX / Physics.speed;
+            $('val-sampleTime').innerText = Physics.sampleTime.toFixed(1) + " (自动匹配)";
+            $('slider-sampleTime').value = Physics.sampleTime;
+        } else {
+            // 恢复之前 Slider 的值
+            $('val-sampleTime').innerText = Physics.sampleTime.toFixed(1);
+            $('slider-sampleTime').value = Physics.sampleTime;
+        }
+
+        // 重置状态时间
+        State.time = 0;
+        State.spawned = false;
+        updatePhysicsText();
+    }
+
+    function initWaveObjects() {
+        // [修复] 此处不应包含 updateObstacleWall，它已在 resetWaveScene 中处理，防止重复
+        resetWaveScene();
+
+        // 创建主波前 (在 T 时刻前的初始传播状态)
+        if (Physics.mode === 'spherical') {
+            const geom = new THREE.SphereGeometry(1, 32, 32);
+            State.preApertureFront = new THREE.Mesh(geom, mainFrontMat);
+            State.preApertureFront.scale.set(0.001, 0.001, 0.001);
+        } else {
+            const geom = new THREE.PlaneGeometry(20, 20);
+            geom.rotateY(Math.PI / 2);
+            State.preApertureFront = new THREE.Mesh(geom, mainFrontMat);
+            State.preApertureFront.position.x = 0;
+        }
+        waveGroup.add(State.preApertureFront);
+    }
+
+    // ==========================================
+    // 5. 惠更斯核心逻辑：采样 & 衍射重构
+    // ==========================================
+    
+    // 生成惠更斯子波源坐标 (应用衍射逻辑)
+    function generateHuygensSources() {
+        const points = [];
+        const currentRadius = Physics.speed * Physics.sampleTime;
+        const N = Physics.density;
+
+        if (Physics.mode === 'spherical') {
+            // 球面采样 (使用斐波那契球法Uniform采样)
+            const goldenRatio = (1 + Math.sqrt(5)) / 2;
+            for (let i = 0; i < N; i++) {
+                const y = 1 - (i / (N - 1)) * 2; // -1 到 1
+                const radiusAtY = Math.sqrt(1 - y * y);
+                const theta = (Math.PI * 2 * i) / goldenRatio;
+                
+                let p = new THREE.Vector3(
+                    currentRadius * Math.cos(theta) * radiusAtY,
+                    currentRadius * y,
+                    currentRadius * Math.sin(theta) * radiusAtY
+                );
+
+                // [衍射逻辑核心] 如果有小孔，则只有在孔半径内的点能成为新声源
+                if (Physics.showAperture) {
+                    // 这里我们采用波 Hit 墙面的时刻 T，此时 currentRadius ≈ Physics.apertureX
+                    // 理想子波源分布在 X=apertureX 的孔平面内
+                    const radialDistYZ = Math.sqrt(p.y * p.y + p.z * p.z);
+                    // 允许极微小的 X 误差，强制采样在孔平面内或略靠前
+                    if (p.x >= Physics.apertureX - 0.1 && radialDistYZ <= Physics.apertureSize) {
+                        points.push(p);
+                    }
+                } else {
+                    // 无障碍全球面采样
+                    points.push(p);
+                }
+            }
+        } else {
+            // 平面采样 (Yz网格采样)
+            const size = 20;
+            const gridN = Math.floor(Math.sqrt(N));
+            const step = size / (gridN > 1 ? gridN - 1 : 1);
+            
+            for (let i = 0; i < gridN; i++) {
+                const y = -size / 2 + i * step;
+                for (let j = 0; j < gridN; j++) {
+                    const z = -size / 2 + j * step;
+                    
+                    let p = new THREE.Vector3(currentRadius, y, z);
+
+                    // [衍射逻辑核心]
+                    if (Physics.showAperture) {
+                        const radialDistYZ = Math.sqrt(y * y + z * z);
+                        if (radialDistYZ <= Physics.apertureSize) {
+                            points.push(p);
+                        }
+                    } else {
+                        // 无障碍全平面采样
+                        points.push(p);
+                    }
+                }
+            }
+        }
+        return points;
+    }
+
+    // 在 T 时刻生成子波源点和膨胀的球面子波 Mesh
+    function spawnWavelets() {
+        if (State.spawned) return; // 确保只生成一次
+
+        const points = generateHuygensSources();
+        if (points.length === 0) { State.spawned = true; return; }
+
+        // 1. 显示离散的源点 (橙色点)
+        const pointGeom = new THREE.BufferGeometry().setFromPoints(points);
+        const pointsMesh = new THREE.Points(pointGeom, new THREE.PointsMaterial({ color: 0xffa726, size: 0.18 }));
+        waveletSourcesMesh = pointsMesh;
+        waveGroup.add(pointsMesh);
+
+        // 2. 为每个采样点生成半透明 expanding sphere (球面子波波前)
+        points.forEach(pos => {
+            const waveletGeom = new THREE.SphereGeometry(1, 16, 12);
+            const mesh = new THREE.Mesh(waveletGeom, waveletFrontMat);
+            mesh.position.copy(pos);
+            mesh.scale.set(0.001, 0.001, 0.001); // 初始大小
+            State.wavelets.push(mesh);
+            waveGroup.add(mesh);
+        });
+
+        // 3. 视觉调整：开启衍射时，移除孔前的原始波前，聚焦孔后叠加
+        if (Physics.showAperture) {
+            if (State.preApertureFront) State.preApertureFront.visible = false;
+        } else {
+            if (State.preApertureFront) State.preApertureFront.visible = true;
+        }
+
+        State.spawned = true;
+    }
+
+    // 6. UI 教案文本装载 (物理正确解释)
+    function updatePhysicsText() {
+        const box = $('physics-box');
+        let html = '';
+
+        if (!Physics.showAperture) {
+            html += `<div style="color:#00bcd4; margin-bottom:10px;">■ 理想波前重构 (无障碍)</div>`;
+            if (Physics.mode === 'spherical') {
+                html += `在无障碍条件下，球面波前（蓝色球）扩散。依据惠更斯原理，在特定时刻 <span class="math">T</span>，我们将蓝色表面离散化采样。每一个采样点（<span style="color:#ffd740">橙色球</span>）都发出一个新的球面子波，它们叠加构成了下一时刻的完整球面波前。`;
+            } else {
+                html += `理想平面波（蓝色面）向前推进。由平面上离散点发出的球面子波，在传播方向上的“公切面”维持为一平面，实现了平面波的完美重构。`;
+            }
+        } else {
+            html += `<div style="color:#ff5252; margin-bottom:10px;">■ 波动衍射现象 (通过小孔)</div>`;
+            html += `设置了半径为 <span class="highlight-red math">r = ${Physics.apertureSize.toFixed(1)}</span> 的红色障碍物孔墙。依据惠更斯原理，波Hit墙面时，**只有通过小孔区域内的质点**能够作为新波源继续发出球面子波传播。<br><br>`;
+            if (Physics.mode === 'plane') {
+                html += `<i>观察：平面波遇到小孔 -> 只有孔内的球面子波能传播叠加 -> 波形重构后**不再呈平面**，而是向几何阴影区扩散的球面波。</i>`;
+            } else {
+                html += `<i>观察：球面波hit孔面 -> 子波叠加角度被限制 -> 波形边缘绕过孔边缘传播，产生衍射。</i>`;
+            }
+        }
+        box.innerHTML = html;
+    }
+
+    // ==========================================
+    // 7. UI 交互控制
+    // ==========================================
+    const $ = (id) => document.getElementById(id);
+    const sliderSampleTime = $('slider-sampleTime');
+    const apertureControls = $('aperture-controls');
+    const statusAperture = $('status-aperture');
+
+    // 通用更新函数 (参数改变重置场景)
+    function onParamChange() { initWaveObjects(); }
+
+    // 波源模式
+    $('btn-spherical').onclick = function() { Physics.mode = 'spherical'; this.classList.add('active-mode'); $('btn-plane').classList.remove('active-mode'); onParamChange(); };
+    $('btn-plane').onclick = function() { Physics.mode = 'plane'; this.classList.add('active-mode'); $('btn-spherical').classList.remove('active-mode'); onParamChange(); };
+
+    // 障碍物小孔开关 (修复 JS CSS 变量错误)
+    $('btn-toggleAperture').onclick = function() {
+        Physics.showAperture = !Physics.showAperture;
+        if (Physics.showAperture) {
+            statusAperture.innerText = '开启';
+            this.classList.add('active-aperture');
+            apertureControls.style.display = 'block';
+            // 锁定采样时刻 Slider (强制同步)
+            sliderSampleTime.disabled = true;
+            // [修复] 将 'var(--bg-color)' 改为具体的 CSS 颜色字符串，避免报错
+            sliderSampleTime.style.accentColor = '#555'; 
+        } else {
+            statusAperture.innerText = '无';
+            this.classList.remove('active-aperture');
+            apertureControls.style.display = 'none';
+            // 解锁 Slider
+            sliderSampleTime.disabled = false;
+            sliderSampleTime.style.accentColor = '#00bcd4'; 
+            Physics.sampleTime = 3.0; // 恢复默认值
+            $('val-sampleTime').innerText = Physics.sampleTime.toFixed(1);
+            $('slider-sampleTime').value = 3.0;
+        }
+        onParamChange();
+    };
+
+    // 参数滑动条监听
+    $('slider-speed').oninput = (e) => { Physics.speed = parseFloat(e.target.value); $('val-speed').innerText = Physics.speed.toFixed(1); onParamChange(); };
+    $('slider-density').oninput = (e) => { Physics.density = parseInt(e.target.value); $('val-density').innerText = Physics.density; onParamChange(); };
+    $('slider-sampleTime').oninput = (e) => { Physics.sampleTime = parseFloat(e.target.value); $('val-sampleTime').innerText = Physics.sampleTime.toFixed(1); onParamChange(); };
+    $('slider-apertureSize').oninput = (e) => { Physics.apertureSize = parseFloat(e.target.value); $('val-apertureSize').innerText = Physics.apertureSize.toFixed(1); onParamChange(); };
+
+    window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+
+    // ==========================================
+    // 8. 动画主循环与物理更新
+    // ==========================================
+    const clock = new THREE.Clock();
+    
+    // 初始化启动
+    initWaveObjects();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const dt = clock.getDelta();
+        
+        State.time += dt;
+
+        // 1. 更新采样时刻 T 前的主波前传播
+        if (State.time < Physics.sampleTime && State.preApertureFront) {
+            const v = Physics.speed;
+            const currentDist = v * State.time;
+            const scaleClamped = Math.max(currentDist, 0.001); 
+
+            if (Physics.mode === 'spherical') {
+                State.preApertureFront.scale.set(scaleClamped, scaleClamped, scaleClamped);
+            } else {
+                State.preApertureFront.position.x = currentDist;
+            }
+        } 
+        // 2. 核心：在特定时刻 T 生成惠更斯子波源
+        else if (!State.spawned) {
+            spawnWavelets();
+        }
+
+        // 3. 更新 T 时刻后的子波膨胀 (衍射/重构演示)
+        if (State.spawned) {
+            const v = Physics.speed;
+            const waveletDt = State.time - Physics.sampleTime;
+            const waveletRadius = Math.max(v * waveletDt, 0.001);
+            
+            State.wavelets.forEach(w => {
+                w.scale.set(waveletRadius, waveletRadius, waveletRadius);
+            });
+        }
+
+        // 循环演示重置逻辑 (防止运行过久时间变量过大)
+        if (State.time > 9.0) { 
+            // 直接清理并重新开始，不调用死循环 init
+            State.time = 0; 
+            State.spawned = false; 
+            resetWaveScene();
+            // 在不调用死循环的情况下，需要在此处重新开启 preApertureFront
+            if (Physics.mode === 'spherical') {
+                const geom = new THREE.SphereGeometry(1, 32, 32);
+                State.preApertureFront = new THREE.Mesh(geom, mainFrontMat);
+                State.preApertureFront.scale.set(0.001, 0.001, 0.001);
+            } else {
+                const geom = new THREE.PlaneGeometry(20, 20);
+                geom.rotateY(Math.PI / 2);
+                State.preApertureFront = new THREE.Mesh(geom, mainFrontMat);
+                State.preApertureFront.position.x = 0;
+            }
+            waveGroup.add(State.preApertureFront);
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    
+    animate();
+</script>
+</body>
+</html>

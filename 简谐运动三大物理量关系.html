@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 简谐运动 y-v-a 相位同步实验室 (HD 加强版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.85); --primary: #00ff88; --vel: #00eaff; --acc: #ff0055; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(15px); border-radius: 12px; z-index: 10; padding: 15px; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        
+        #controls { top: 20px; left: 20px; width: 260px; }
+        #math-panel { top: 20px; right: 20px; width: 380px; max-height: calc(100vh - 40px); overflow-y: auto; }
+        
+        h1 { margin: 0 0 10px 0; font-size: 16px; color: #fff; border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding-bottom: 5px; }
+        
+        .control-group { margin-bottom: 12px; }
+        label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; font-weight: 600; color: #94a3b8; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        #input-A { accent-color: var(--primary); }
+        #input-w { accent-color: var(--vel); }
+
+        button { width: 100%; padding: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 13px; margin-top: 5px; }
+        .btn-toggle { background: #e2e8f0; color: #000; }
+        .btn-reset { background: rgba(255,255,255,0.1); color: #fff; margin-top: 8px; font-size: 11px; }
+
+        .math-step { margin-bottom: 12px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; font-size: 13px; line-height: 1.5;}
+        .formula-hl { background: rgba(255, 255, 255, 0.05); padding: 5px 8px; border-radius: 4px; display: block; margin: 6px 0; }
+
+        /* 数据展示 */
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .data-card { padding: 8px; background: rgba(0,0,0,0.4); border-radius: 8px; text-align: center; }
+        .data-card.y { border-top: 3px solid var(--primary); }
+        .data-card.v { border-top: 3px solid var(--vel); }
+        .data-card.a { border-top: 3px solid var(--acc); }
+        .data-value { font-size: 15px; font-weight: bold; font-family: 'Courier New', monospace; }
+
+        /* 3D 标签样式：增加背景防止重叠干扰 */
+        .label-3d { 
+            font-weight: bold; 
+            font-size: 15px; 
+            padding: 4px 10px; 
+            border-radius: 6px; 
+            background: rgba(0,0,0,0.6); 
+            border: 1px solid rgba(255,255,255,0.1);
+            white-space: nowrap;
+            pointer-events: none;
+            text-shadow: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <h1>⚙️ 运动学同步控制</h1>
+        <div class="control-group" style="margin-top: 20px;">
+            <label><span>系统振幅 (A)</span> <span id="val-A" style="color:var(--primary)">2.0 m</span></label>
+            <input type="range" id="input-A" min="0.5" max="2.5" value="2.0" step="0.1">
+        </div>
+        <div class="control-group">
+            <label><span>角频率 (ω)</span> <span id="val-w" style="color:var(--vel)">1.5 rad/s</span></label>
+            <input type="range" id="input-w" min="0.5" max="1.8" value="1.5" step="0.1">
+        </div>
+        <button id="toggle-btn" class="btn-toggle">⏸ 暂停 / 继续</button>
+        <button id="clear-btn" class="btn-reset">🗑 清除并重置</button>
+        <div style="font-size: 10px; color: #64748b; margin-top: 10px; text-align: center;">按键盘 [ P ] 键截取 4K 高清图</div>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <h1>📐 相位演化解析</h1>
+        <div id="math-static-content">
+            <div class="math-step" style="border-left: 3px solid var(--primary);">
+                <b style="color: var(--primary);">位移 $y$：</b>基准参考。
+                <div class="formula-hl" style="color: var(--primary);">$$ y(t) = A \cos(\omega t) $$</div>
+            </div>
+            <div class="math-step" style="border-left: 3px solid var(--vel);">
+                <b style="color: var(--vel);">速度 $v$：</b>相位超前 $\pi/2$。
+                <div class="formula-hl" style="color: var(--vel);">$$ v(t) = -A\omega \sin(\omega t) $$</div>
+            </div>
+            <div class="math-step" style="border-left: 3px solid var(--acc);">
+                <b style="color: var(--acc);">加速度 $a$：</b>与位移反相（差 $\pi$）。
+                <div class="formula-hl" style="color: var(--acc);">$$ a(t) = -A\omega^2 \cos(\omega t) $$</div>
+            </div>
+        </div>
+        <div class="data-grid">
+            <div class="data-card y"><div id="data-y" class="data-value" style="color: var(--primary);">0.00</div></div>
+            <div class="data-card v"><div id="data-v" class="data-value" style="color: var(--vel);">0.00</div></div>
+            <div class="data-card a"><div id="data-a" class="data-value" style="color: var(--acc);">0.00</div></div>
+        </div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            // ================= 1. 环境初始化 =================
+            const scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050a15, 0.015);
+            const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 32);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            const labelRenderer = new THREE.CSS2DRenderer();
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.domElement.style.position = 'absolute';
+            labelRenderer.domElement.style.top = '0px';
+            labelRenderer.domElement.style.pointerEvents = 'none';
+            document.body.appendChild(labelRenderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableRotate = false;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+            sun.position.set(5, 15, 10);
+            scene.add(sun);
+
+            // ================= 2. 坐标系与标签 =================
+            const originX = -7; 
+            const traceSpeed = 4.5;
+            const Y_pos = 8.5;    
+            const V_pos = 0;    
+            const A_pos = -8.5;  
+
+            function createAxis(yPos, color) {
+                const points = [new THREE.Vector3(originX, yPos, 0), new THREE.Vector3(originX + 22, yPos, 0)];
+                const geo = new THREE.BufferGeometry().setFromPoints(points);
+                const mat = new THREE.LineDashedMaterial({ color: color, dashSize: 0.4, gapSize: 0.2, opacity: 0.3, transparent: true });
+                const line = new THREE.Line(geo, mat);
+                line.computeLineDistances();
+                scene.add(line);
+            }
+            createAxis(Y_pos, 0x00ff88);
+            createAxis(V_pos, 0x00eaff);
+            createAxis(A_pos, 0xff0055);
+
+            // 标签创建器（带位置偏移防止重叠）
+            function createLabel(text, color, x, y) {
+                const div = document.createElement('div');
+                div.className = 'label-3d';
+                div.innerHTML = text;
+                div.style.color = color;
+                const obj = new THREE.CSS2DObject(div);
+                obj.position.set(x, y, 0);
+                scene.add(obj);
+                return obj;
+            }
+
+            // 【核心修正】彻底拉开标签位置，并放置在轴的最左端
+            createLabel('📉 位移 y(t)', '#00ff88', originX - 3.5, Y_pos);
+            createLabel('⚡ 速度 v(t)', '#00eaff', originX - 3.5, V_pos);
+            createLabel('🔥 加速度 a(t)', '#ff0055', originX - 3.5, A_pos);
+            
+            // 时间轴末端标签
+            createLabel('时间 t →', '#94a3b8', originX + 23.5, Y_pos);
+            createLabel('时间 t →', '#94a3b8', originX + 23.5, V_pos);
+            createLabel('时间 t →', '#94a3b8', originX + 23.5, A_pos);
+
+            // 弹簧模型
+            const springGroup = new THREE.Group();
+            scene.add(springGroup);
+            const springRestLen = 4;
+            function createSpring() {
+                const pts = [];
+                for (let i = 0; i <= 500; i++) {
+                    const t = i / 500;
+                    const a = t * Math.PI * 2 * 14;
+                    pts.push(new THREE.Vector3(Math.cos(a)*0.4, -t*springRestLen, Math.sin(a)*0.4));
+                }
+                const geo = new THREE.BufferGeometry().setFromPoints(pts);
+                return new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x888888, linewidth: 2 }));
+            }
+            const springLine = createSpring();
+            springLine.position.set(originX, Y_pos + 4.5, 0);
+            springGroup.add(springLine);
+            const mass = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.2, 32), new THREE.MeshStandardMaterial({ color: 0x00ff88, metalness: 0.6 }));
+            springGroup.add(mass);
+
+            // ================= 3. 轨迹与光剑 =================
+            const MAX_POINTS = 900;
+            function createTrace(color) {
+                const geo = new THREE.BufferGeometry();
+                const pos = new Float32Array(MAX_POINTS * 3);
+                geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                // 使用亮度极高的色值，并在视觉上通过多点渲染模拟加粗
+                const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: color, linewidth: 3 }));
+                line.geometry.setDrawRange(0, 0);
+                scene.add(line);
+                return line;
+            }
+            const traceY = createTrace(0x00ff88);
+            const traceV = createTrace(0x00eaff);
+            const traceA = createTrace(0xff0055);
+
+            // 同步激光线
+            const syncLineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(originX, Y_pos+5, 0), new THREE.Vector3(originX, A_pos-5, 0)]);
+            const syncLine = new THREE.Line(syncLineGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 }));
+            scene.add(syncLine);
+
+            // ================= 4. 逻辑控制 =================
+            let isPlaying = true;
+            let time = 0;
+            let A = 2.0;
+            let omega = 1.5;
+            let traceHistory = [];
+
+            document.getElementById('input-A').oninput = (e) => {
+                A = parseFloat(e.target.value); document.getElementById('val-A').innerText = A.toFixed(1) + " m";
+            };
+            document.getElementById('input-w').oninput = (e) => {
+                omega = parseFloat(e.target.value); document.getElementById('val-w').innerText = omega.toFixed(1) + " rad/s";
+            };
+            document.getElementById('toggle-btn').onclick = (e) => {
+                isPlaying = !isPlaying; e.target.innerText = isPlaying ? "⏸ 暂停 / 继续" : "▶ 继续播放";
+            };
+            document.getElementById('clear-btn').onclick = () => {
+                traceHistory = [];
+                [traceY, traceV, traceA].forEach(t => t.geometry.setDrawRange(0, 0));
+            };
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+
+                if (isPlaying) {
+                    const dt = 0.016;
+                    time += dt;
+
+                    const y = A * Math.cos(omega * time);
+                    const v = -A * omega * Math.sin(omega * time);
+                    const a = -A * omega * omega * Math.cos(omega * time);
+
+                    // 弹簧质量块联动
+                    const len = springRestLen - y;
+                    springLine.scale.y = len / springRestLen;
+                    mass.position.set(originX, Y_pos + 4.5 - len, 0);
+
+                    // 实时数据更新
+                    document.getElementById('data-y').innerText = y.toFixed(2);
+                    document.getElementById('data-v').innerText = v.toFixed(2);
+                    document.getElementById('data-a').innerText = a.toFixed(2);
+
+                    // 激光线位置
+                    syncLine.position.x = 0; // 始终固定在起始点观察
+                    const syncPos = syncLine.geometry.attributes.position.array;
+                    syncPos[0] = originX; syncPos[1] = Y_pos + y;
+                    syncPos[3] = originX; syncPos[4] = A_pos + a;
+                    syncLine.geometry.attributes.position.needsUpdate = true;
+
+                    // 轨迹平移
+                    traceHistory.push({ y, v, a, t: time });
+                    if (traceHistory.length > MAX_POINTS) traceHistory.shift();
+
+                    const posY = traceY.geometry.attributes.position.array;
+                    const posV = traceV.geometry.attributes.position.array;
+                    const posA = traceA.geometry.attributes.position.array;
+
+                    for (let i = 0; i < traceHistory.length; i++) {
+                        const p = traceHistory[i];
+                        const xRender = originX + (time - p.t) * traceSpeed;
+                        posY[i*3] = xRender; posY[i*3+1] = Y_pos + p.y; posY[i*3+2] = 0;
+                        posV[i*3] = xRender; posV[i*3+1] = V_pos + p.v; posV[i*3+2] = 0;
+                        posA[i*3] = xRender; posA[i*3+1] = A_pos + p.a; posA[i*3+2] = 0;
+                    }
+                    [traceY, traceV, traceA].forEach(t => {
+                        t.geometry.attributes.position.needsUpdate = true;
+                        t.geometry.setDrawRange(0, traceHistory.length);
+                    });
+                }
+                renderer.render(scene, camera);
+                labelRenderer.render(scene, camera);
+            }
+
+            // 截图插件
+            window.addEventListener('keydown', function(e) {
+                if(e.key.toLowerCase() === 'p') {
+                    const link = document.createElement('a');
+                    link.download = 'SHM_Kinematics_HD.png';
+                    link.href = renderer.domElement.toDataURL('image/png');
+                    link.click();
+                    const hint = document.createElement('div');
+                    hint.innerHTML = '📸 4K 高清截图已保存！';
+                    hint.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:var(--primary); color:#000; padding:15px 25px; border-radius:8px; font-weight:bold; z-index:9999; box-shadow: 0 4px 20px rgba(0,0,0,0.5);';
+                    document.body.appendChild(hint);
+                    setTimeout(() => hint.remove(), 2500);
+                }
+            });
+
+            window.onresize = () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            };
+
+            try { if (window.MathJax && typeof MathJax.typesetPromise === 'function') MathJax.typesetPromise(); } catch (e) {}
+            animate();
+        }; 
+    </script>
+</body>
+</html>

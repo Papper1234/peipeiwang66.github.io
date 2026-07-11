@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 同频谐振动合成：几何与代数双轨推演实验室 (完美公式版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$']] },
+            svg: { fontCache: 'global' },
+            startup: { typeset: false } // 禁用自动初始渲染，完全交由 JS 队列手动控制
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.85); --c1: #00f2fe; --c2: #ff3366; --csum: #00ff88; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(15px); border-radius: 12px; z-index: 10; padding: 16px; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.6); }
+        
+        #controls { top: 20px; left: 20px; width: 280px; }
+        
+        #math-panel { top: 20px; right: 20px; width: 440px; max-height: calc(100vh - 40px); overflow-y: auto; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        h1 { margin: 0 0 12px 0; font-size: 16px; color: #fff; border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding-bottom: 8px;}
+        h2 { font-size: 14px; margin: 0 0 8px 0; color: #facc15;}
+        
+        .control-group { margin-bottom: 12px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);}
+        .group-title { font-size: 11px; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;}
+        label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #cbd5e1; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        #input-A1, #input-p1 { accent-color: var(--c1); }
+        #input-A2, #input-p2 { accent-color: var(--c2); }
+        
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; margin-bottom: 10px; }
+        .btn-preset { padding: 6px 0; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; font-size: 11px; cursor: pointer; background: rgba(255,255,255,0.05); color: #fff;}
+        .btn-preset:hover { background: rgba(255,255,255,0.2); }
+        
+        button.action-btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 13px; margin-top: 5px; }
+        .btn-toggle { background: var(--csum); color: #000; }
+        .btn-toggle.paused { background: #e2e8f0; color: #000; }
+
+        /* 模式切换选项卡 */
+        .tab-container { display: flex; margin-bottom: 15px; border-bottom: 2px solid rgba(255,255,255,0.1); }
+        .tab-btn { flex: 1; text-align: center; padding: 10px 0; cursor: pointer; font-size: 14px; font-weight: bold; color: #64748b; border-bottom: 2px solid transparent; transition: 0.3s; margin-bottom: -2px;}
+        .tab-btn.active { color: var(--c1); border-bottom: 2px solid var(--c1); }
+        .tab-btn:hover:not(.active) { color: #fff; }
+        
+        .math-step { margin-bottom: 12px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; font-size: 13px; line-height: 1.6;}
+        .math-step b { display: block; margin-bottom: 5px;}
+        .formula-hl { background: rgba(255, 255, 255, 0.05); padding: 8px 10px; border-radius: 4px; display: block; margin: 8px 0; border-left: 3px solid #facc15; font-family: monospace; overflow-x: auto;}
+
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 15px; }
+        .data-card { padding: 8px; background: rgba(0,0,0,0.5); border-radius: 8px; text-align: center; }
+        .data-card.v1 { border-top: 2px solid var(--c1); color: var(--c1);}
+        .data-card.v2 { border-top: 2px solid var(--c2); color: var(--c2);}
+        .data-card.vsum { border-top: 2px solid var(--csum); color: var(--csum);}
+        .data-val { font-size: 16px; font-weight: bold; font-family: 'Courier New', monospace; margin-top: 4px;}
+
+        .label-3d { font-weight: bold; font-size: 12px; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.15); pointer-events: none;}
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <h1>⚙️ 谐振动合成控制台</h1>
+        
+        <div class="control-group">
+            <div class="group-title" style="color: var(--c1)">分振动 1 (Cyan)</div>
+            <label><span>振幅 A₁</span> <span id="val-A1">2.0</span></label>
+            <input type="range" id="input-A1" min="0.5" max="3.0" value="2.0" step="0.1">
+            <label style="margin-top:5px;"><span>初相 φ₁</span> <span id="val-p1">0°</span></label>
+            <input type="range" id="input-p1" min="-180" max="180" value="0" step="1">
+        </div>
+
+        <div class="control-group">
+            <div class="group-title" style="color: var(--c2)">分振动 2 (Pink)</div>
+            <label><span>振幅 A₂</span> <span id="val-A2">1.5</span></label>
+            <input type="range" id="input-A2" min="0.5" max="3.0" value="1.5" step="0.1">
+            <label style="margin-top:5px;"><span>初相 φ₂</span> <span id="val-p2">60°</span></label>
+            <input type="range" id="input-p2" min="-180" max="180" value="60" step="1">
+        </div>
+
+        <div class="btn-grid">
+            <button class="btn-preset" onclick="setPhaseDiff(0)">同相(0°)</button>
+            <button class="btn-preset" onclick="setPhaseDiff(90)">正交(90°)</button>
+            <button class="btn-preset" onclick="setPhaseDiff(180)">反相(180°)</button>
+        </div>
+
+        <button id="toggle-btn" class="action-btn btn-toggle">⏸ 暂停（进入深度推导）</button>
+        <button id="view-math-btn" class="action-btn" style="background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2);">👁️ 隐藏解析面板</button>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <h1 id="panel-title">📐 数理演绎板</h1>
+        
+        <div class="tab-container">
+            <div class="tab-btn active" id="tab-algebraic">代数解析法</div>
+            <div class="tab-btn" id="tab-phasor">旋转矢量法</div>
+        </div>
+
+        <div id="math-content"></div>
+
+        <div class="data-grid">
+            <div class="data-card v1">
+                <div style="font-size:10px; color:#94a3b8;">分位移 y₁</div>
+                <div id="data-y1" class="data-val">0.00</div>
+            </div>
+            <div class="data-card v2">
+                <div style="font-size:10px; color:#94a3b8;">分位移 y₂</div>
+                <div id="data-y2" class="data-val">0.00</div>
+            </div>
+            <div class="data-card vsum">
+                <div style="font-size:10px; color:#94a3b8;">合位移 y</div>
+                <div id="data-ysum" class="data-val">0.00</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            // ================= 1. 引擎初始化 =================
+            const scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050a15, 0.015);
+            const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 32);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            const labelRenderer = new THREE.CSS2DRenderer();
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.domElement.style.position = 'absolute';
+            labelRenderer.domElement.style.top = '0px';
+            labelRenderer.domElement.style.pointerEvents = 'none';
+            document.body.appendChild(labelRenderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableRotate = false;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+
+            // ================= 2. 几何网格与常驻标识 =================
+            const origin = new THREE.Vector3(-8, 0, 0); 
+            const traceStartX = 0; 
+            const traceSpeed = 3.5;
+            const omega = 1.5; 
+            
+            const c1 = 0x00f2fe; const c2 = 0xff3366; const cSum = 0x00ff88; 
+
+            function createLabel(text, color, x, y) {
+                const div = document.createElement('div');
+                div.className = 'label-3d'; div.innerHTML = text; div.style.color = color;
+                const obj = new THREE.CSS2DObject(div);
+                obj.position.set(x, y, 0);
+                scene.add(obj); return obj;
+            }
+            createLabel('Y (位移)', '#fff', origin.x, 7.5);
+            createLabel('t →', '#fff', traceStartX + 18, 0.8);
+
+            const axisGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(origin.x - 7, 0, 0), new THREE.Vector3(traceStartX + 18, 0, 0),
+                new THREE.Vector3(origin.x, -7, 0), new THREE.Vector3(origin.x, 7, 0)
+            ]);
+            scene.add(new THREE.LineSegments(axisGeo, new THREE.LineBasicMaterial({color: 0x445566, transparent:true, opacity:0.6})));
+            scene.add(new THREE.Mesh(new THREE.RingGeometry(5.95, 6.0, 64), new THREE.MeshBasicMaterial({color: 0x334455, side: THREE.DoubleSide, transparent:true, opacity:0.15})).translateX(origin.x));
+
+            const vec1 = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), origin, 1, c1, 0.6, 0.3);
+            const vec2 = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), origin, 1, c2, 0.6, 0.3);
+            const vecSum = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), origin, 1, cSum, 0.8, 0.4);
+            scene.add(vec1); scene.add(vec2); scene.add(vecSum);
+
+            const paraMat = new THREE.LineDashedMaterial({ color: 0xaaaaaa, dashSize: 0.3, gapSize: 0.2, transparent:true, opacity:0.5 });
+            const pLine1 = new THREE.Line(new THREE.BufferGeometry(), paraMat);
+            const pLine2 = new THREE.Line(new THREE.BufferGeometry(), paraMat);
+            scene.add(pLine1); scene.add(pLine2);
+
+            const projSum = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({ color: cSum, dashSize: 0.2, gapSize: 0.2, transparent:true, opacity:0.4 }));
+            scene.add(projSum);
+
+            const MAX_POINTS = 800;
+            const traceSumGeo = new THREE.BufferGeometry();
+            traceSumGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_POINTS * 3), 3));
+            const traceSum = new THREE.Line(traceSumGeo, new THREE.LineBasicMaterial({ color: cSum, linewidth: 3, transparent:true, opacity:0.9 }));
+            traceSum.geometry.setDrawRange(0, 0);
+            scene.add(traceSum); 
+
+            // 几何辅助线与标签 (定格用)
+            const auxMat = new THREE.LineDashedMaterial({ color: 0xfacc15, dashSize: 0.2, gapSize: 0.1 });
+            const auxLineAx = new THREE.Line(new THREE.BufferGeometry(), auxMat); scene.add(auxLineAx); auxLineAx.visible = false;
+            const auxLineAy = new THREE.Line(new THREE.BufferGeometry(), auxMat); scene.add(auxLineAy); auxLineAy.visible = false;
+            const lblPhiArc = createLabel('$\\phi$', '#facc15', 0, 0); lblPhiArc.visible = false;
+            const lblAy = createLabel('$A_y$', '#facc15', 0, 0); lblAy.visible = false;
+            const lblAx = createLabel('$A_x$', '#facc15', 0, 0); lblAx.visible = false;
+            const lblA_hyp = createLabel('$A$', '#facc15', 0, 0); lblA_hyp.visible = false;
+
+            // ================= 3. 逻辑控制与推导生成 =================
+            let isPlaying = true;
+            let currentTab = 'algebraic'; // 默认代数法
+            let time = 0;
+            let A1 = 2.0; let p1_deg = 0;
+            let A2 = 1.5; let p2_deg = 60;
+            let traceHistory = [];
+
+            // UI 绑定
+            ['A1','A2','p1','p2'].forEach(id => {
+                document.getElementById('input-'+id).oninput = (e) => {
+                    let val = parseFloat(e.target.value);
+                    if(id==='A1') A1 = val; else if(id==='A2') A2 = val; else if(id==='p1') p1_deg = val; else p2_deg = val;
+                    document.getElementById('val-'+id).innerText = val.toFixed(1) + (id.includes('p')?'°':'');
+                    isPlaying && (traceHistory = []);
+                };
+            });
+
+            window.setPhaseDiff = function(diff) {
+                p2_deg = p1_deg + diff;
+                if(p2_deg > 180) p2_deg -= 360;
+                document.getElementById('input-p2').value = p2_deg;
+                document.getElementById('val-p2').innerText = p2_deg + "°";
+                isPlaying && (traceHistory = []);
+            };
+
+            const toggleBtn = document.getElementById('toggle-btn');
+            toggleBtn.onclick = () => {
+                isPlaying = !isPlaying;
+                if (isPlaying) {
+                    toggleBtn.innerText = "⏸ 暂停（进入深度推导）";
+                    toggleBtn.classList.remove('paused');
+                    hidePauseAuxiliary();
+                } else {
+                    toggleBtn.innerText = "▶ 继续演化";
+                    toggleBtn.classList.add('paused');
+                    if (currentTab === 'phasor') showPauseAuxiliary();
+                }
+                updateMathContent(); 
+            };
+
+            // 选项卡切换
+            document.getElementById('tab-algebraic').onclick = () => {
+                currentTab = 'algebraic';
+                document.getElementById('tab-algebraic').classList.add('active');
+                document.getElementById('tab-phasor').classList.remove('active');
+                hidePauseAuxiliary(); 
+                updateMathContent();
+            };
+            document.getElementById('tab-phasor').onclick = () => {
+                currentTab = 'phasor';
+                document.getElementById('tab-phasor').classList.add('active');
+                document.getElementById('tab-algebraic').classList.remove('active');
+                if(!isPlaying) showPauseAuxiliary();
+                updateMathContent();
+            };
+
+            document.getElementById('view-math-btn').onclick = (e) => {
+                const panel = document.getElementById('math-panel');
+                panel.style.transform = panel.style.transform === 'translateX(120%)' ? 'translateX(0)' : 'translateX(120%)';
+                e.target.innerText = panel.style.transform === 'translateX(120%)' ? "👁️ 显示解析面板" : "👁️ 隐藏解析面板";
+            };
+
+            // 【核心修复】：Promise 排队机制，解决 MathJax 异步渲染闪烁和断层 Bug
+            let mathJaxPromise = Promise.resolve();
+            function updateMathJax() {
+                if (window.MathJax && MathJax.typesetPromise) {
+                    mathJaxPromise = mathJaxPromise.then(() => {
+                        MathJax.typesetClear([document.getElementById('math-content')]);
+                        return MathJax.typesetPromise([document.getElementById('math-content')]);
+                    }).catch(err => console.log('MathJax 渲染队列错误:', err));
+                }
+            }
+
+            // 核心推导内容生成
+            function updateMathContent() {
+                const content = document.getElementById('math-content');
+                const title = document.getElementById('panel-title');
+                
+                // 实时参量
+                const phi1_rad = p1_deg * Math.PI / 180; const phi2_rad = p2_deg * Math.PI / 180;
+                const cos_dp = Math.cos(phi2_rad - phi1_rad);
+                const cos1 = Math.cos(phi1_rad); const sin1 = Math.sin(phi1_rad);
+                const cos2 = Math.cos(phi2_rad); const sin2 = Math.sin(phi2_rad);
+                
+                const Ax = A1*cos1 + A2*cos2;
+                const Ay = A1*sin1 + A2*sin2;
+                const Asum = Math.sqrt(A1*A1 + A2*A2 + 2*A1*A2*cos_dp);
+                const phiSum_deg = (Math.atan2(Ay, Ax) * 180 / Math.PI).toFixed(1);
+
+                if (currentTab === 'algebraic') {
+                    if (!isPlaying) {
+                        title.innerText = `📐 代数法：定格验证 ($t = ${time.toFixed(2)}$ s)`;
+                        content.innerHTML = `
+                            <div class="math-step" style="border-left: 3px solid var(--csum);">
+                                <b>代数代入验证</b><br>
+                                我们将当前参量代入提取出的系数，验证其等效性。
+                            </div>
+                            <h2>1. 展开系数计算</h2>
+                            <div class="math-step">
+                                提取 $\\sin\\omega t$ 与 $\\cos\\omega t$ 的系数 $A_x$ 和 $A_y$：
+                                <div class="formula-hl">
+                                $$ A_x = A_1\\cos\\phi_1 + A_2\\cos\\phi_2 \\approx ${Ax.toFixed(2)} $$
+                                $$ A_y = A_1\\sin\\phi_1 + A_2\\sin\\phi_2 \\approx ${Ay.toFixed(2)} $$
+                                </div>
+                            </div>
+                            <h2>2. 求解幅值与相角</h2>
+                            <div class="math-step">
+                                将两项平方求和开根号得 $A$，相除求反正切得 $\\phi$：
+                                <div class="formula-hl">$$ A = \\sqrt{A_x^2 + A_y^2} \\approx ${Asum.toFixed(2)} $$</div>
+                                <div class="formula-hl">$$ \\phi = \\arctan\\left(\\frac{A_y}{A_x}\\right) \\approx ${phiSum_deg}^\\circ $$</div>
+                            </div>
+                        `;
+                    } else {
+                        title.innerText = "📐 代数解析法：严谨推演";
+                        // 【核心修复】：补充了最完整的代数替换和化简公式，明确得出最终表达式
+                        content.innerHTML = `
+                            <div class="math-step" style="border-left: 3px solid var(--c1);">
+                                <b>步骤 1：和角公式展开</b><br>
+                                将两个正弦振动 $y_1, y_2$ 通过 $\\sin(\\alpha+\\beta)$ 展开：
+                                $$ y_1 = A_1(\\sin\\omega t\\cos\\phi_1 + \\cos\\omega t\\sin\\phi_1) $$
+                                $$ y_2 = A_2(\\sin\\omega t\\cos\\phi_2 + \\cos\\omega t\\sin\\phi_2) $$
+                            </div>
+                            <div class="math-step" style="border-left: 3px solid #facc15;">
+                                <b>步骤 2：合并同类项</b><br>
+                                将 $y = y_1 + y_2$ 叠加，按 $\\sin\\omega t$ 和 $\\cos\\omega t$ 提取公因式：
+                                $$ A_x = A_1\\cos\\phi_1 + A_2\\cos\\phi_2 $$
+                                $$ A_y = A_1\\sin\\phi_1 + A_2\\sin\\phi_2 $$
+                                原叠加式化简为：$y = A_x\\sin\\omega t + A_y\\cos\\omega t$
+                            </div>
+                            <div class="math-step" style="border-left: 3px solid var(--csum);">
+                                <b>步骤 3：反向化积求终解</b><br>
+                                设 $A_x = A\\cos\\phi$，$A_y = A\\sin\\phi$，代入上式即得合成振动方程：$y = A\\sin(\\omega t + \\phi)$。<br><br>
+                                <b>求合振幅 $A$：</b>由 $A^2 = A_x^2 + A_y^2$ 将步骤2等式平方相加，利用 $\\cos\\phi_1\\cos\\phi_2 + \\sin\\phi_1\\sin\\phi_2 = \\cos(\\phi_2 - \\phi_1)$ 化简得出终解：
+                                <div class="formula-hl">$$ A = \\sqrt{A_1^2 + A_2^2 + 2A_1 A_2 \\cos(\\phi_2 - \\phi_1)} $$</div>
+                                <b>求合初相 $\\phi$：</b>由 $\\tan\\phi = A_y / A_x$ 直接相除得出终解：
+                                <div class="formula-hl">$$ \\tan\\phi = \\frac{A_1\\sin\\phi_1 + A_2\\sin\\phi_2}{A_1\\cos\\phi_1 + A_2\\cos\\phi_2} $$</div>
+                            </div>
+                        `;
+                    }
+                } 
+                else if (currentTab === 'phasor') {
+                    if (!isPlaying) {
+                        title.innerText = `📐 矢量法：定格解析 ($t = ${time.toFixed(2)}$ s)`;
+                        content.innerHTML = `
+                            <div class="math-step" style="border-left: 3px solid var(--csum);">
+                                <b>直角三角形几何解剖</b><br>
+                                观察左侧，我们在合矢量 $\\vec{A}$（绿色）下方投射出了一个高亮的直角三角形。
+                            </div>
+                            <h2>1. 投影分量的几何叠加</h2>
+                            <div class="math-step">
+                                分矢量 $\\vec{A}_1, \\vec{A}_2$ 在静止 X、Y 轴的分量叠加，完美等价于底边和高：
+                                <div class="formula-hl">$$ A_x = A_{1x} + A_{2x} \\approx ${Ax.toFixed(2)} $$</div>
+                                <div class="formula-hl">$$ A_y = A_{1y} + A_{2y} \\approx ${Ay.toFixed(2)} $$</div>
+                            </div>
+                            <h2>2. 勾股定理直接定解</h2>
+                            <div class="math-step">
+                                根据直角三角形几何特征，斜边长度（振幅 $A$）和底角（初相 $\\phi$）可直接写出：
+                                <div class="formula-hl">$$ A = \\sqrt{A_x^2 + A_y^2} \\approx ${Asum.toFixed(2)} $$</div>
+                                <div class="formula-hl">$$ \\phi = \\arctan\\left(\\frac{A_y}{A_x}\\right) \\approx ${phiSum_deg}^\\circ $$</div>
+                            </div>
+                        `;
+                    } else {
+                        title.innerText = "📐 旋转矢量法：几何推演";
+                        content.innerHTML = `
+                            <div class="math-step" style="border-left: 3px solid var(--c1);">
+                                <b>步骤 1：构造旋转矢量</b><br>
+                                简谐振动等价于匀速圆周运动在 Y 轴的投影。我们将两个振动映射为长度分别为 $A_1, A_2$，角速度均为 $\\omega$ 的旋转矢量 $\\vec{A}_1, \\vec{A}_2$。
+                            </div>
+                            <div class="math-step" style="border-left: 3px solid #facc15;">
+                                <b>步骤 2：平行四边形法则求 $A$</b><br>
+                                由于两者以相同的 $\\omega$ 旋转，它们的相对夹角（相位差 $\\Delta\\phi = \\phi_2 - \\phi_1$）恒定不变。它们如同一个刚性三角形在旋转。<br>
+                                根据空间几何的余弦定理，合成矢量 $\\vec{A}$ 的长度：
+                                <div class="formula-hl">$$ A = \\sqrt{A_1^2 + A_2^2 + 2A_1 A_2 \\cos(\\phi_2 - \\phi_1)} $$</div>
+                            </div>
+                            <div class="math-step" style="border-left: 3px solid var(--csum);">
+                                <b>步骤 3：轴向投影求 $\\phi$</b><br>
+                                将 $\\vec{A}_1, \\vec{A}_2$ 强制投影到固定坐标轴求和，即可得出直角三角形的正切定义式：
+                                <div class="formula-hl">$$ \\tan\\phi = \\frac{A_1\\sin\\phi_1 + A_2\\sin\\phi_2}{A_1\\cos\\phi_1 + A_2\\cos\\phi_2} $$</div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                // 执行异步公式渲染队列
+                updateMathJax();
+            }
+
+            function showPauseAuxiliary() {
+                const phi1_rad = p1_deg * Math.PI / 180; const phi2_rad = p2_deg * Math.PI / 180;
+                const thetaSum = Math.atan2(A1*Math.sin(omega*time+phi1_rad) + A2*Math.sin(omega*time+phi2_rad), A1*Math.cos(omega*time+phi1_rad) + A2*Math.cos(omega*time+phi2_rad));
+                const vx = A1 * Math.cos(omega * time + phi1_rad) + A2 * Math.cos(omega * time + phi2_rad);
+                const vy = A1 * Math.sin(omega * time + phi1_rad) + A2 * Math.sin(omega * time + phi2_rad);
+                
+                auxLineAx.geometry.setFromPoints([origin, new THREE.Vector3(origin.x + vx, origin.y, 0)]); auxLineAx.computeLineDistances(); auxLineAx.visible = true;
+                auxLineAy.geometry.setFromPoints([new THREE.Vector3(origin.x + vx, origin.y, 0), new THREE.Vector3(origin.x + vx, origin.y + vy, 0)]); auxLineAy.computeLineDistances(); auxLineAy.visible = true;
+
+                lblPhiArc.position.set(origin.x + 0.8*Math.cos(thetaSum/2), origin.y + 0.8*Math.sin(thetaSum/2), 0); lblPhiArc.visible = true;
+                lblAy.position.set(origin.x + vx + 0.5, origin.y + vy/2, 0); lblAy.visible = true;
+                lblAx.position.set(origin.x + vx/2, origin.y - 0.5, 0); lblAx.visible = true;
+                lblA_hyp.position.set(origin.x + vx/2 + 0.2*Math.cos(thetaSum+Math.PI/2), origin.y + vy/2 + 0.2*Math.sin(thetaSum+Math.PI/2), 0); lblA_hyp.visible = true;
+            }
+
+            function hidePauseAuxiliary() {
+                auxLineAx.visible = false; auxLineAy.visible = false;
+                lblPhiArc.visible = false; lblAy.visible = false; lblAx.visible = false; lblA_hyp.visible = false;
+            }
+
+            // ================= 5. 主渲染循环 =================
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+
+                if (isPlaying) {
+                    time += 0.016;
+                    const phi1 = p1_deg * Math.PI / 180; const phi2 = p2_deg * Math.PI / 180;
+                    const t1 = omega * time + phi1; const t2 = omega * time + phi2;
+                    const y1 = A1 * Math.sin(t1); const y2 = A2 * Math.sin(t2);
+                    const v1x = A1 * Math.cos(t1); const v1y = A1 * Math.sin(t1);
+                    const v2x = A2 * Math.cos(t2); const v2y = A2 * Math.sin(t2);
+                    const vx = v1x + v2x; const vy = v1y + v2y;
+                    const ysum = vy;
+                    const Asum = Math.sqrt(vx*vx + vy*vy);
+                    const tSum = Math.atan2(vy, vx);
+
+                    vec1.setLength(A1, 0.4, 0.2); vec1.setDirection(new THREE.Vector3(Math.cos(t1), Math.sin(t1), 0));
+                    vec2.setLength(A2, 0.4, 0.2); vec2.setDirection(new THREE.Vector3(Math.cos(t2), Math.sin(t2), 0));
+                    vecSum.setLength(Asum, 0.6, 0.3); vecSum.setDirection(new THREE.Vector3(Math.cos(tSum), Math.sin(tSum), 0));
+
+                    pLine1.geometry.setFromPoints([new THREE.Vector3(origin.x + v1x, origin.y + v1y, 0), new THREE.Vector3(origin.x + vx, origin.y + vy, 0)]); pLine1.computeLineDistances();
+                    pLine2.geometry.setFromPoints([new THREE.Vector3(origin.x + v2x, origin.y + v2y, 0), new THREE.Vector3(origin.x + vx, origin.y + vy, 0)]); pLine2.computeLineDistances();
+
+                    const pArr = projSum.geometry.attributes.position.array;
+                    pArr[0] = origin.x + vx; pArr[1] = origin.y + vy;
+                    pArr[3] = origin.x;      pArr[4] = origin.y + ysum;
+                    pArr[6] = traceStartX;   pArr[7] = origin.y + ysum;
+                    projSum.geometry.attributes.position.needsUpdate = true; projSum.computeLineDistances();
+
+                    traceHistory.push({ ysum, t: time });
+                    if (traceHistory.length > MAX_POINTS) traceHistory.shift();
+                    
+                    const tracePos = traceSum.geometry.attributes.position.array;
+                    for (let i = 0; i < traceHistory.length; i++) {
+                        const h = traceHistory[i];
+                        tracePos[i*3] = traceStartX + (time - h.t) * traceSpeed; 
+                        tracePos[i*3+1] = origin.y + h.ysum; tracePos[i*3+2] = 0;
+                    }
+                    traceSum.geometry.attributes.position.needsUpdate = true;
+                    traceSum.geometry.setDrawRange(0, traceHistory.length);
+
+                    document.getElementById('data-y1').innerText = y1.toFixed(2);
+                    document.getElementById('data-y2').innerText = y2.toFixed(2);
+                    document.getElementById('data-ysum').innerText = ysum.toFixed(2);
+                }
+
+                renderer.render(scene, camera);
+                labelRenderer.render(scene, camera);
+            }
+
+            window.onresize = () => {
+                camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight); labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            };
+
+            // 初始化触发一次公式渲染
+            updateMathContent();
+            animate();
+        }; 
+    </script>
+</body>
+</html>

@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D 波的反射与透射过程演示</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa; /* 极浅的灰白色背景，保护视力 */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #canvas-container {
+            width: 100%;
+            flex-grow: 1;
+            position: relative;
+            background-color: #ffffff; /* 纯白画布 */
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        /* 底部控制面板 */
+        #controls {
+            width: 100%;
+            background-color: #ffffff;
+            border-top: 1px solid #ddd;
+            padding: 15px 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        label {
+            font-size: 14px;
+            color: #333;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        select, button {
+            padding: 6px 12px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #fff;
+            cursor: pointer;
+            outline: none;
+        }
+        button:hover {
+            background-color: #f0f0f0;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+            font-weight: bold;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        /* 数据显示面板，悬浮在右上角 */
+        #data-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #444;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .math {
+            font-family: 'Times New Roman', Times, serif;
+            font-style: italic;
+        }
+        .legend-color {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <canvas id="waveCanvas"></canvas>
+        <div id="data-panel">
+            <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px;">图例与状态</div>
+            <div style="margin-bottom: 5px;"><span class="legend-color" style="background:#0055ff;"></span>实际合成波 (驻波区)</div>
+            <div style="margin-bottom: 5px;"><span class="legend-color" style="background:#228b22; border:1px dashed #fff;"></span>入射波分量</div>
+            <div style="margin-bottom: 5px;"><span class="legend-color" style="background:#3498db; border:1px dashed #fff;"></span>反射波分量</div>
+            <div style="margin-bottom: 15px;"><span class="legend-color" style="background:#f39c12;"></span>透射波 (介质2)</div>
+            
+            <div id="status-text">
+                反射系数 <span class="math">R</span> = <span id="val-R" style="font-weight:bold;"></span><br>
+                透射系数 <span class="math">T</span> = <span id="val-T" style="font-weight:bold;"></span>
+            </div>
+            <div id="conclusion" style="margin-top: 10px; font-weight: bold; color: #d32f2f;"></div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div class="control-group">
+            <button id="btn-play" class="btn-primary">暂停</button>
+            <button id="btn-reset">重新发射波前</button>
+        </div>
+        
+        <div class="control-group" style="border-left: 1px solid #ddd; padding-left: 20px;">
+            <label for="sel-mode">界面类型:</label>
+            <select id="sel-mode">
+                <option value="rare-to-dense">波疏 -> 波密 (发生半波损失)</option>
+                <option value="dense-to-rare">波密 -> 波疏 (无半波损失)</option>
+                <option value="fixed">绝对固定端 (全反射，无透射)</option>
+            </select>
+        </div>
+
+        <div class="control-group" style="border-left: 1px solid #ddd; padding-left: 20px;">
+            <label><input type="checkbox" id="chk-inc" checked> 显示入射分量</label>
+            <label><input type="checkbox" id="chk-ref" checked> 显示反射分量</label>
+            <label><input type="checkbox" id="chk-sum" checked> 显示合成波</label>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('waveCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 物理全局变量
+    let isPlaying = true;
+    let simTime = 0; // 模拟时间。负数代表波还未到达界面
+    
+    const Physics = {
+        A: 40,           // 基准振幅 (px)
+        freq: 1.2,       // 频率 (Hz)
+        v1: 160,         // 介质1波速 (默认波疏)
+        v2: 40,         // 介质2波速 (默认波密)
+        pixelPerMeter: 1 // 缩放比例
+    };
+
+    // UI 绑定
+    const btnPlay = document.getElementById('btn-play');
+    const btnReset = document.getElementById('btn-reset');
+    const selMode = document.getElementById('sel-mode');
+    
+    const chkInc = document.getElementById('chk-inc');
+    const chkRef = document.getElementById('chk-ref');
+    const chkSum = document.getElementById('chk-sum');
+
+    const valR = document.getElementById('val-R');
+    const valT = document.getElementById('val-T');
+    const conclusion = document.getElementById('conclusion');
+
+    function resize() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // 重置波的传播过程
+    function resetWave() {
+        const startX = -canvas.width / 2;
+        simTime = startX / Physics.v1; 
+    }
+
+    function updateMode() {
+        const mode = selMode.value;
+        if (mode === 'rare-to-dense') {
+            Physics.v1 = 160; Physics.v2 = 40;
+        } else if (mode === 'dense-to-rare') {
+            Physics.v1 = 40; Physics.v2 = 160;
+        } else if (mode === 'fixed') {
+            Physics.v1 = 160; Physics.v2 = 0.0001;
+        }
+        resetWave();
+    }
+
+    btnPlay.addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        btnPlay.innerText = isPlaying ? "暂停" : "继续";
+        btnPlay.className = isPlaying ? "btn-primary" : "";
+    });
+
+    btnReset.addEventListener('click', resetWave);
+    selMode.addEventListener('change', updateMode);
+
+    // ==========================================
+    // 渲染核心
+    // ==========================================
+    let lastTime = performance.now();
+
+    function draw() {
+        const now = performance.now();
+        const dt = (now - lastTime) / 1000;
+        lastTime = now;
+
+        if (isPlaying) {
+            simTime += dt;
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const cy = canvas.height / 2; // Y轴中点
+        const cx = canvas.width / 2;  // X轴界面位置 (x=0)
+
+        // 绘制界面基准线 (x = 0)
+        ctx.beginPath();
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 1.5;
+        ctx.moveTo(cx, 0);
+        ctx.lineTo(cx, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 绘制介质文本
+        ctx.font = "16px sans-serif";
+        ctx.fillStyle = "#333";
+        ctx.textAlign = "center";
+        ctx.fillText("介质 1", cx / 2, 50);
+        ctx.fillText("介质 2", cx + cx / 2, 50);
+
+        // --- 物理计算 ---
+        const w = 2 * Math.PI * Physics.freq;
+        const k1 = w / Physics.v1;
+        const k2 = w / Physics.v2;
+        
+        const R = (Physics.v2 - Physics.v1) / (Physics.v2 + Physics.v1);
+        const T = (2 * Physics.v2) / (Physics.v2 + Physics.v1);
+
+        valR.innerText = R.toFixed(2);
+        valT.innerText = T.toFixed(2);
+        if (R < -0.01) {
+            conclusion.innerText = "▶ 发生半波损失 (相位突变 π)";
+            conclusion.style.color = "#d32f2f";
+        } else {
+            conclusion.innerText = "▶ 无半波损失 (相位连续)";
+            conclusion.style.color = "#2e7d32";
+        }
+
+        // --- 绘制波形 ---
+        const incFrontX = Physics.v1 * simTime;          // 入射波最前端
+        const refFrontX = -Physics.v1 * simTime;         // 反射波最前端 (负值，向左传)
+        const transFrontX = Physics.v2 * simTime;        // 透射波最前端
+
+        const drawWave = (color, isDashed, thickness, func, startX, endX) => {
+            if (startX > endX) return; // 容错处理
+            
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = thickness;
+            if (isDashed) ctx.setLineDash([6, 4]);
+            else ctx.setLineDash([]);
+            
+            let firstPoint = true;
+            for (let px = startX; px <= endX; px++) {
+                const physX = px - cx; 
+                const physY = func(physX);
+                const py = cy - physY; 
+                
+                if (firstPoint) {
+                    ctx.moveTo(px, py);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(px, py);
+                }
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+        };
+
+        // 1. 入射波分量 (绿色虚线)
+        if (chkInc.checked) {
+            const incEndPx = Math.min(cx, cx + incFrontX);
+            if (incEndPx >= 0) {
+                // 如果只开启了入射分量而未开启合成波，则完整绘制绿色虚线
+                // 如果开启了合成波，则只有在尚未发生反射的区域才绘制纯绿色虚线，发生反射的区域将被蓝色实线(合成波)替代。
+                let drawEndPx = incEndPx;
+                if (chkSum.checked && simTime > 0) {
+                    drawEndPx = Math.max(0, Math.min(incEndPx, cx + refFrontX)); 
+                }
+                
+                if (drawEndPx >= 0) {
+                    drawWave('#228b22', true, 1.5, 
+                        (x) => Physics.A * Math.sin(k1 * x - w * simTime), 
+                        0, drawEndPx
+                    );
+                }
+
+                // 即使开启了合成波，为了保持“背景对比”效果，在合成波区域我们依然可以把虚线画出来（作为背景分量）
+                // 这样能清晰看到蓝色实线是由两条虚线合成的
+                drawWave('#228b22', true, 1.5, 
+                    (x) => Physics.A * Math.sin(k1 * x - w * simTime), 
+                    0, incEndPx
+                );
+            }
+        }
+
+        // 2. 反射波分量 (蓝色虚线)
+        if (chkRef.checked && simTime > 0) {
+            const refStartPx = Math.max(0, cx + refFrontX);
+            if (refStartPx <= cx) {
+                drawWave('#3498db', true, 1.5, 
+                    (x) => R * Physics.A * Math.sin(-k1 * x - w * simTime), 
+                    refStartPx, cx
+                );
+            }
+        }
+
+        // 3. 实际合成波 (深蓝粗实线)
+        // [修复逻辑]：只有在存在干涉的区域（即反射波到达的地方）才绘制合成波，否则它仅仅是入射波。
+        if (chkSum.checked && simTime > 0) {
+            const refStartPx = Math.max(0, cx + refFrontX);
+            if (refStartPx <= cx) {
+                drawWave('#0055ff', false, 3.0, 
+                    (x) => {
+                        let y = Physics.A * Math.sin(k1 * x - w * simTime); // 入射必存在
+                        y += R * Physics.A * Math.sin(-k1 * x - w * simTime); // 反射叠加
+                        return y;
+                    }, 
+                    refStartPx, cx
+                );
+            }
+        }
+
+        // 4. 透射波 (介质2, 橙色实线)
+        if (simTime > 0) {
+            const transEndPx = Math.min(canvas.width, cx + transFrontX);
+            if (transEndPx >= cx) {
+                drawWave('#f39c12', false, 3.0, 
+                    (x) => T * Physics.A * Math.sin(k2 * x - w * simTime), 
+                    cx, transEndPx
+                );
+            }
+        }
+
+        // 5. 绘制界面交点
+        let knotY = 0;
+        if (simTime > 0) {
+            knotY = T * Physics.A * Math.sin(-w * simTime); 
+        } else if (simTime <= 0 && incFrontX >= 0) {
+            knotY = Physics.A * Math.sin(-w * simTime); 
+        }
+        
+        ctx.beginPath();
+        ctx.arc(cx, cy - knotY, 4, 0, 2 * Math.PI);
+        ctx.fillStyle = '#d32f2f';
+        ctx.fill();
+        
+        ctx.font = "12px sans-serif";
+        ctx.fillStyle = "#d32f2f";
+        ctx.textAlign = "right";
+        if (selMode.value === 'fixed' || (selMode.value === 'rare-to-dense' && simTime > 0)) {
+             ctx.fillText("界面波节 (受限)", cx - 8, cy - knotY - 8);
+        }
+
+        requestAnimationFrame(draw);
+    }
+
+    // 初始化
+    updateMode();
+    draw();
+
+</script>
+</body>
+</html>

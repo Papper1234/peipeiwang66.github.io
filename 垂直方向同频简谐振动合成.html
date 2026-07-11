@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 垂直同频谐振动合成：全景旋向与椭圆偏振观测台</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$']] },
+            svg: { fontCache: 'global' },
+            startup: { typeset: false } 
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.85); --cx: #00f2fe; --cy: #ff3366; --c-ell: #00ff88; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(15px); border-radius: 12px; z-index: 10; padding: 16px; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.6); }
+        
+        #controls { top: 20px; left: 20px; width: 340px; }
+        #math-panel { top: 20px; right: 20px; width: 460px; max-height: calc(100vh - 40px); overflow-y: auto; transition: transform 0.4s; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        h1 { margin: 0 0 12px 0; font-size: 16px; color: #fff; border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding-bottom: 8px;}
+        
+        .control-group { margin-bottom: 12px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);}
+        label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #cbd5e1; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        #input-Ax { accent-color: var(--cx); }
+        #input-Ay { accent-color: var(--cy); }
+        #input-dp { accent-color: #facc15; }
+        
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
+        .btn-preset { padding: 8px 0; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; font-size: 11px; cursor: pointer; background: rgba(255,255,255,0.05); color: #fff; transition: 0.2s; font-weight: bold;}
+        .btn-preset:hover { background: rgba(255,255,255,0.2); transform: scale(1.02);}
+        
+        .math-step { margin-bottom: 12px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; font-size: 13px; line-height: 1.6;}
+        .formula-hl { background: rgba(255, 255, 255, 0.05); padding: 8px 10px; border-radius: 4px; display: block; margin: 8px 0; border-left: 3px solid #facc15; font-family: monospace; overflow-x: auto;}
+
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px; }
+        .data-card { padding: 10px; background: rgba(0,0,0,0.5); border-radius: 8px; text-align: center; border-top: 2px solid #475569;}
+        .data-card.active-r { border-top-color: #f43f5e; background: rgba(244, 63, 94, 0.1); }
+        .data-card.active-l { border-top-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+        .data-val { font-size: 14px; font-weight: bold; margin-top: 6px; color: var(--c-ell);}
+
+        .label-3d { font-weight: bold; font-size: 13px; padding: 2px 6px; border-radius: 4px; color: #fff; text-shadow: 1px 1px 4px #000; pointer-events: none;}
+        #hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 13px; color: #94a3b8; pointer-events: none; background: rgba(0,0,0,0.5); padding: 8px 16px; border-radius: 20px;}
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <h1>⚙️ 正交谐振动控制台</h1>
+        
+        <div class="control-group">
+            <label style="color: var(--cx)"><span>X 轴振幅 (A₁)</span> <span id="val-Ax">2.0</span></label>
+            <input type="range" id="input-Ax" min="0.5" max="4.0" value="2.0" step="0.1">
+        </div>
+
+        <div class="control-group">
+            <label style="color: var(--cy)"><span>Y 轴振幅 (A₂)</span> <span id="val-Ay">3.0</span></label>
+            <input type="range" id="input-Ay" min="0.5" max="4.0" value="3.0" step="0.1">
+        </div>
+
+        <div class="control-group">
+            <label style="color: #facc15"><span>相位差 (Δφ = φ₂ - φ₁)</span> <span id="val-dp">90°</span></label>
+            <input type="range" id="input-dp" min="-180" max="360" value="90" step="1">
+        </div>
+
+        <div class="btn-grid">
+            <button class="btn-preset" onclick="setPhaseDiff(0)">线偏振 (0°)</button>
+            <button class="btn-preset" onclick="setPhaseDiff(180)">反向线偏振 (180°)</button>
+            
+            <button class="btn-preset" onclick="setPhaseDiff(90)" style="border-color: #f43f5e; color: #f43f5e;">正椭圆 右旋 (90°)</button>
+            <button class="btn-preset" onclick="setPhaseDiff(-90)" style="border-color: #3b82f6; color: #3b82f6;">正椭圆 左旋 (-90°)</button>
+            
+            <button class="btn-preset" onclick="setPhaseDiff(270)" style="border-color: #3b82f6; color: #3b82f6;">正椭圆 左旋 (270°)</button>
+            <button class="btn-preset" onclick="setPhaseDiff(360)">恢复线偏振 (360°)</button>
+        </div>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <h1>📐 轨迹方程与全景旋向解析</h1>
+        <div id="math-content"></div>
+
+        <div class="data-grid">
+            <div class="data-card">
+                <div style="font-size:11px; color:#94a3b8;">主轴方位角 θ</div>
+                <div id="data-theta" class="data-val">0°</div>
+            </div>
+            <div class="data-card" id="card-dir">
+                <div style="font-size:11px; color:#94a3b8;">质点旋向 (Chirality)</div>
+                <div id="data-dir" class="data-val">加载中...</div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="hint">🖱️ 提示：拖拽旋转空间视角，观察时间 Z 轴的螺旋投影规律</div>
+
+    <script>
+        window.onload = function() {
+            // ================= 1. 引擎初始化 =================
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(12, 10, 20);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            const labelRenderer = new THREE.CSS2DRenderer();
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.domElement.style.position = 'absolute';
+            labelRenderer.domElement.style.top = '0px';
+            labelRenderer.domElement.style.pointerEvents = 'none';
+            document.body.appendChild(labelRenderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            // ================= 2. 坐标系与投影基面 =================
+            const cX = 0x00f2fe, cY = 0xff3366, cEll = 0x00ff88;
+            
+            const axisMat = new THREE.LineBasicMaterial({color: 0x475569, linewidth: 2});
+            function buildAxis(p1, p2) { return new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1, p2]), axisMat); }
+            
+            scene.add(buildAxis(new THREE.Vector3(-6,0,0), new THREE.Vector3(6,0,0))); // X
+            scene.add(buildAxis(new THREE.Vector3(0,-6,0), new THREE.Vector3(0,6,0))); // Y
+            scene.add(buildAxis(new THREE.Vector3(0,0,-20), new THREE.Vector3(0,0,10))); // Z (Time)
+
+            function createLabel(text, color, pos) {
+                const div = document.createElement('div');
+                div.className = 'label-3d'; div.innerHTML = text; div.style.color = color;
+                const obj = new THREE.CSS2DObject(div);
+                obj.position.copy(pos); scene.add(obj); return obj;
+            }
+            createLabel('X', cX, new THREE.Vector3(6.5, 0, 0));
+            createLabel('Y', cY, new THREE.Vector3(0, 6.5, 0));
+            createLabel('Z (时间轴)', '#facc15', new THREE.Vector3(0, 0, 10.5));
+
+            // Z=0 平面网格
+            const grid = new THREE.GridHelper(12, 12, 0x334155, 0x1e293b);
+            grid.rotation.x = Math.PI / 2;
+            scene.add(grid);
+
+            // ================= 3. 动态波形对象 =================
+            const maxPoints = 800;
+            const tRange = 20;
+
+            function createLine(color, opacity, isLoop=false) {
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxPoints * 3), 3));
+                const mat = new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: opacity, linewidth: 2 });
+                return isLoop ? new THREE.LineLoop(geo, mat) : new THREE.Line(geo, mat);
+            }
+
+            const helixLine = createLine(cEll, 0.7); scene.add(helixLine);
+            const xWaveLine = createLine(cX, 0.4); scene.add(xWaveLine);
+            const yWaveLine = createLine(cY, 0.4); scene.add(yWaveLine);
+            const ellLine = createLine(cEll, 1.0, true); scene.add(ellLine);
+
+            const particle = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), new THREE.MeshBasicMaterial({color: 0xffffff}));
+            scene.add(particle);
+
+            // ================= 4. 参数与核心逻辑 =================
+            let Ax = 2.0, Ay = 3.0, dPhi_deg = 90;
+            let time = 0; const omega = 2;
+
+            function updateCurves() {
+                const dp_rad = dPhi_deg * Math.PI / 180;
+                
+                const posHelix = helixLine.geometry.attributes.position.array;
+                const posX = xWaveLine.geometry.attributes.position.array;
+                const posY = yWaveLine.geometry.attributes.position.array;
+                const posEll = ellLine.geometry.attributes.position.array;
+
+                for (let i = 0; i < maxPoints; i++) {
+                    let t_val = (i / maxPoints) * Math.PI * 6; // 画出3个周期
+                    let x_val = Ax * Math.cos(t_val);
+                    let y_val = Ay * Math.cos(t_val + dp_rad);
+                    let z_val = - (i / maxPoints) * tRange; 
+
+                    posHelix[i*3] = x_val; posHelix[i*3+1] = y_val; posHelix[i*3+2] = z_val;
+                    posX[i*3] = x_val; posX[i*3+1] = -6; posX[i*3+2] = z_val;
+                    posY[i*3] = -6; posY[i*3+1] = y_val; posY[i*3+2] = z_val;
+                    posEll[i*3] = x_val; posEll[i*3+1] = y_val; posEll[i*3+2] = 0;
+                }
+
+                [helixLine, xWaveLine, yWaveLine, ellLine].forEach(l => {
+                    l.geometry.attributes.position.needsUpdate = true;
+                });
+            }
+
+            let mathJaxPromise = Promise.resolve();
+            function updateMath() {
+                const dp_rad = dPhi_deg * Math.PI / 180;
+                let theta_rad = 0;
+                if (Math.abs(Ax - Ay) > 0.01) {
+                    theta_rad = 0.5 * Math.atan((2 * Ax * Ay * Math.cos(dp_rad)) / (Ax*Ax - Ay*Ay));
+                    if(Ax < Ay) theta_rad += Math.PI / 2;
+                } else {
+                    theta_rad = Math.cos(dp_rad) >= 0 ? Math.PI / 4 : -Math.PI / 4;
+                }
+                if(theta_rad > Math.PI/2) theta_rad -= Math.PI;
+                const theta_deg = (theta_rad * 180 / Math.PI).toFixed(1);
+
+                // 判断旋向
+                let dirStr = "", dirColor = "";
+                let sin_dp = Math.sin(dp_rad);
+                const cardDir = document.getElementById('card-dir');
+                cardDir.classList.remove('active-r', 'active-l');
+
+                if (Math.abs(sin_dp) < 0.01) {
+                    dirStr = "直线极化 (无旋向)";
+                    dirColor = "#94a3b8";
+                } else if (sin_dp > 0) {
+                    dirStr = "顺时针 (右旋)";
+                    dirColor = "#f43f5e";
+                    cardDir.classList.add('active-r');
+                } else {
+                    dirStr = "逆时针 (左旋)";
+                    dirColor = "#3b82f6";
+                    cardDir.classList.add('active-l');
+                }
+
+                document.getElementById('data-theta').innerText = theta_deg + "°";
+                document.getElementById('data-dir').innerText = dirStr;
+                document.getElementById('data-dir').style.color = dirColor;
+
+                const content = document.getElementById('math-content');
+                let eqnClass = "";
+                if(Math.abs(sin_dp) < 0.01) eqnClass = "退化为直线段";
+                else if(Math.abs(Math.cos(dp_rad)) < 0.01) eqnClass = "正椭圆 (主轴对齐 XY 轴)";
+                else eqnClass = "斜椭圆";
+
+                content.innerHTML = `
+                    <div class="math-step" style="border-left: 3px solid var(--cx);">
+                        <b>1. 轨迹标准方程：</b><br>
+                        由 $x = A_1\\cos\\omega t$ 和 $y = A_2\\cos(\\omega t + \\Delta\\phi)$ 消去时间 $t$：
+                        <div class="formula-hl">
+                            $$ \\left(\\frac{x}{A_1}\\right)^2 + \\left(\\frac{y}{A_2}\\right)^2 - \\frac{2xy}{A_1 A_2}\\cos\\Delta\\phi = \\sin^2\\Delta\\phi $$
+                        </div>
+                        代入当前值 $\\Delta\\phi=${dPhi_deg}^\\circ$，该方程在二维解析几何中代表：<b>${eqnClass}</b>。
+                    </div>
+                    <div class="math-step">
+                        <b>2. 主轴方位角推导：</b><br>
+                        利用二次曲线旋转角公式 $\\tan(2\\theta) = B/(A-C)$：
+                        <div class="formula-hl">
+                            $$ \\tan(2\\theta) = \\frac{2 A_1 A_2 \\cos\\Delta\\phi}{A_1^2 - A_2^2} $$
+                        </div>
+                    </div>
+                    <div class="math-step" style="border-left: 3px solid var(--c-ell);">
+                        <b>3. 旋向 (手性) 推导：</b><br>
+                        计算角动量方向 $L_z = x v_y - y v_x$：
+                        <div class="formula-hl">
+                            $$ L_z = -A_1 A_2 \\omega \\sin\\Delta\\phi $$
+                        </div>
+                        由于 $\\sin(${dPhi_deg}^\\circ)$ 决定符号，由此判断质点在 X-Y 面上的旋转方向。
+                    </div>
+                    <div class="math-step" style="border-left: 3px solid #facc15; background: rgba(250, 204, 21, 0.05);">
+                        <b>4. 深度对比：90° 与 -90° (及 270°)</b><br>
+                        当 $\\Delta\\phi = 90^\\circ$ 或 $-90^\\circ$ 时，代入方程 1 均得到标准正椭圆方程：$\\left(\\frac{x}{A_1}\\right)^2 + \\left(\\frac{y}{A_2}\\right)^2 = 1$。<b>轨迹形状完全一致！</b><br><br>
+                        但在方程 3 中：<br>
+                        • $\\Delta\\phi = 90^\\circ$ 时，$\\sin(90^\\circ) > 0 \\implies L_z < 0$，质点作<span style="color:#f43f5e; font-weight:bold;">顺时针 (右旋)</span>。<br>
+                        • $\\Delta\\phi = -90^\\circ$ (或 $270^\\circ$) 时，$\\sin < 0 \\implies L_z > 0$，质点作<span style="color:#3b82f6; font-weight:bold;">逆时针 (左旋)</span>。<br>
+                        <b>物理本质：留在空间的车辙印完全一样，但车开的方向截然相反。</b>
+                    </div>
+                `;
+
+                if (window.MathJax && MathJax.typesetPromise) {
+                    mathJaxPromise = mathJaxPromise.then(() => {
+                        MathJax.typesetClear([content]);
+                        return MathJax.typesetPromise([content]);
+                    }).catch(e => {});
+                }
+            }
+
+            // ================= 5. 事件绑定 =================
+            ['Ax','Ay','dp'].forEach(id => {
+                document.getElementById('input-'+id).oninput = (e) => {
+                    let val = parseFloat(e.target.value);
+                    if(id==='Ax') Ax = val; else if(id==='Ay') Ay = val; else dPhi_deg = val;
+                    document.getElementById('val-'+id).innerText = val + (id==='dp'?'°':'');
+                    updateCurves(); updateMath();
+                };
+            });
+
+            window.setPhaseDiff = function(val) {
+                dPhi_deg = val;
+                document.getElementById('input-dp').value = val;
+                document.getElementById('val-dp').innerText = val + "°";
+                updateCurves(); updateMath();
+            };
+
+            // ================= 6. 主循环 =================
+            const clock = new THREE.Clock();
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+
+                time += clock.getDelta();
+                let currentT = (time * omega) % (Math.PI * 2);
+                
+                let px = Ax * Math.cos(currentT);
+                let py = Ay * Math.cos(currentT + dPhi_deg * Math.PI / 180);
+                particle.position.set(px, py, 0);
+
+                renderer.render(scene, camera);
+                labelRenderer.render(scene, camera);
+            }
+
+            window.onresize = () => {
+                camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight); labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            };
+
+            updateCurves(); updateMath();
+            animate();
+        };
+    </script>
+</body>
+</html>

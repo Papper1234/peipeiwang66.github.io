@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高尔顿板 (Galton Board) 物理模拟 - 严谨校准版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #1a1d21;
+            --panel-bg: rgba(30, 34, 40, 0.95);
+            --border-color: #3e444c;
+            --text-main: #d4d4d4;
+            --accent-blue: #00e5ff;
+            --accent-red: #ff5252;
+            --accent-yellow: #ffd740;
+        }
+        body { margin: 0; overflow: hidden; background-color: var(--bg-color); color: var(--text-main); font-family: 'Segoe UI', Tahoma, sans-serif; }
+        
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        #ui-panel {
+            position: absolute; top: 20px; left: 20px; width: 320px; z-index: 10;
+            background: var(--panel-bg); border: 1px solid var(--border-color);
+            border-radius: 6px; box-shadow: 0 12px 32px rgba(0,0,0,0.8);
+            display: flex; flex-direction: column;
+        }
+        .panel-header { padding: 15px 20px; border-bottom: 1px solid var(--border-color); font-weight: bold; color: #fff; letter-spacing: 1px; font-size: 14px; text-transform: uppercase; }
+        .panel-section { padding: 15px 20px; border-bottom: 1px solid var(--border-color); }
+        .panel-section:last-child { border-bottom: none; }
+        .section-title { font-size: 12px; color: #888; margin-bottom: 12px; font-weight: bold; }
+
+        .control-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 13px; }
+        input[type="range"] { flex: 1; margin-left: 10px; accent-color: var(--accent-blue); cursor: pointer; }
+        
+        button {
+            width: 100%; padding: 10px; background: #2a2f36; border: 1px solid var(--border-color);
+            color: var(--text-main); cursor: pointer; border-radius: 4px; font-size: 13px; transition: all 0.2s; margin-top: 5px;
+        }
+        button:hover { background: #3e444c; }
+        button.btn-primary { background: #005f73; border-color: var(--accent-blue); color: #fff; font-weight: bold; }
+        button.btn-primary:hover { background: #0a9396; }
+
+        .data-box { background: #14161a; padding: 12px; border: 1px solid #2a2f36; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 12px; line-height: 1.8; color: #aaa; }
+        .highlight { color: var(--accent-yellow); font-weight: bold; }
+        
+        #legend {
+            position: absolute; bottom: 20px; left: 20px; z-index: 10;
+            font-family: 'Consolas', monospace; font-size: 12px; color: #888;
+            background: rgba(20,22,26,0.8); padding: 10px; border: 1px solid #333; border-radius: 4px; line-height: 1.6;
+        }
+        .c-blue { color: var(--accent-blue); } .c-red { color: var(--accent-red); }
+
+        #overlay-canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<div id="ui-panel">
+    <div class="panel-header">加尔顿板统计实验</div>
+    
+    <div class="panel-section">
+        <div class="section-title">小球生成控制</div>
+        <div class="control-row">
+            <span>下落速率</span>
+            <input type="range" id="spawn-rate" min="1" max="60" value="15">
+            <span id="val-rate" style="width: 30px; text-align: right; color: var(--accent-blue);">15</span>
+        </div>
+        <button id="btn-toggle" class="btn-primary">开始掉落</button>
+        <button id="btn-reset">清空重置</button>
+    </div>
+
+    <div class="panel-section">
+        <div class="section-title">实时统计数据</div>
+        <div class="data-box">
+            <div>已投放总数: <span id="out-total" class="highlight">0</span> 个</div>
+            <div>最高槽内球数: <span id="out-max" class="highlight">0</span> 个</div>
+            <hr style="border-color:#333; margin:8px 0;">
+            <div style="font-size: 11px;">※ 红线为理论高斯(正态)分布曲线。随着小球增多，物理统计将逼近理论规律。</div>
+        </div>
+    </div>
+</div>
+
+<div id="legend">
+    <span class="c-blue">■</span> 物理小球 (遵守牛顿力学)<br>
+    <span class="c-red">—</span> 理论正态分布包络线
+</div>
+
+<div id="canvas-container"></div>
+<canvas id="overlay-canvas"></canvas>
+
+<script>
+    // ==========================================
+    // 1. 初始化 Matter.js 引擎与模块
+    // ==========================================
+    const Engine = Matter.Engine,
+          Render = Matter.Render,
+          Runner = Matter.Runner,
+          Bodies = Matter.Bodies,
+          Composite = Matter.Composite,
+          Events = Matter.Events;
+
+    const engine = Engine.create();
+    // 提升引擎解算精度，确保小球不会因为挤压发生剧烈的异常弹射
+    engine.positionIterations = 16;
+    engine.velocityIterations = 16;
+
+    const container = document.getElementById('canvas-container');
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    const render = Render.create({
+        element: container,
+        engine: engine,
+        options: {
+            width: width,
+            height: height,
+            wireframes: false,
+            background: '#1a1d21',
+            pixelRatio: window.devicePixelRatio
+        }
+    });
+
+    Render.run(render);
+    const runner = Runner.create();
+    Runner.run(runner, engine);
+
+    // ==========================================
+    // 2. 加尔顿板几何与物理参数构建
+    // ==========================================
+    const PEGS_ROWS = 13;      // 钉子的行数
+    const PEGS_SPACING = 32;   // 钉子之间的间距
+    const PEG_RADIUS = 3.5;    // 钉子半径
+    const BALL_RADIUS = 4.2;   // 掉落的小球半径
+
+    const centerX = width / 2;
+    const startY = height * 0.12; 
+
+    let pegs = [];
+    let bins = [];
+    let walls = [];
+    let activeBalls = [];
+
+    let binCounts = new Array(PEGS_ROWS + 1).fill(0);
+    let totalBallsFallen = 0;
+
+    function buildBoard() {
+        Composite.clear(engine.world);
+        Engine.clear(engine);
+        pegs = []; bins = []; walls = []; activeBalls = [];
+        binCounts.fill(0);
+        totalBallsFallen = 0;
+        updateUI();
+
+        const pegOptions = {
+            isStatic: true,
+            restitution: 0.15, // 降低钉子弹性，防止过度反弹
+            friction: 0.1,
+            render: { fillStyle: '#3e444c' }
+        };
+
+        for (let row = 0; row < PEGS_ROWS; row++) {
+            let numPegsInRow = row + 1;
+            let rowY = startY + row * PEGS_SPACING;
+            let startX = centerX - (row * PEGS_SPACING) / 2;
+
+            for (let col = 0; col < numPegsInRow; col++) {
+                let x = startX + col * PEGS_SPACING;
+                let peg = Bodies.circle(x, rowY, PEG_RADIUS, pegOptions);
+                pegs.push(peg);
+            }
+        }
+        Composite.add(engine.world, pegs);
+
+        const binWallOptions = {
+            isStatic: true,
+            restitution: 0.05, 
+            friction: 0.5,
+            render: { fillStyle: '#2a303c' }
+        };
+        const numBins = PEGS_ROWS + 1;
+        const binHeight = height * 0.45;
+        const binsStartY = startY + PEGS_ROWS * PEGS_SPACING;
+        const binsStartX = centerX - (PEGS_ROWS * PEGS_SPACING) / 2;
+
+        for (let i = 0; i <= numBins; i++) {
+            let x = binsStartX + i * PEGS_SPACING - (PEGS_SPACING / 2);
+            let wall = Bodies.rectangle(x, binsStartY + binHeight/2, 4, binHeight, binWallOptions);
+            bins.push(wall);
+        }
+        
+        const floorWidth = (numBins + 1) * PEGS_SPACING;
+        const floor = Bodies.rectangle(centerX, binsStartY + binHeight, floorWidth, 10, binWallOptions);
+        bins.push(floor);
+        
+        // 移除了倾斜的漏斗，因为它会给小球施加不确定的水平初速度
+        Composite.add(engine.world, [...bins]);
+    }
+
+    // ==========================================
+    // 3. 小球生成与统计逻辑
+    // ==========================================
+    let isSpawning = false;
+    let spawnRate = 46; // 初始帧间隔(61-15)
+    let frameCount = 0;
+
+    function spawnBall() {
+        // 【核心修正1】极度缩小生成范围的偏移，确保小球几乎正正地砸在第一颗钉子上
+        const xOffset = (Math.random() - 0.5) * 0.5; 
+        const ball = Bodies.circle(centerX + xOffset, startY - 15, BALL_RADIUS, {
+            restitution: 0.1,    // 【核心修正2】降低小球弹性
+            friction: 0.01,
+            frictionAir: 0.055,  // 【核心修正3】大幅增加空气阻力，消除多余的横向飘移速度
+            density: 0.05,
+            render: { fillStyle: '#00e5ff' } 
+        });
+        
+        Composite.add(engine.world, ball);
+        activeBalls.push({ body: ball, counted: false });
+    }
+
+    Events.on(engine, 'afterUpdate', function() {
+        if (isSpawning && frameCount % spawnRate === 0) {
+            spawnBall();
+        }
+        frameCount++;
+
+        const binsStartY = startY + PEGS_ROWS * PEGS_SPACING;
+        const binsStartX = centerX - (PEGS_ROWS * PEGS_SPACING) / 2;
+
+        activeBalls.forEach(ballData => {
+            let body = ballData.body;
+            // 判断线稍微降低，防止球还在半空就被统计
+            if (!ballData.counted && body.position.y > binsStartY + 35) {
+                let relX = body.position.x - binsStartX + (PEGS_SPACING / 2);
+                let binIndex = Math.floor(relX / PEGS_SPACING);
+                
+                if (binIndex >= 0 && binIndex <= PEGS_ROWS) {
+                    binCounts[binIndex]++;
+                    totalBallsFallen++;
+                    ballData.counted = true; 
+                    body.render.fillStyle = '#0a9396'; 
+                }
+            }
+        });
+
+        activeBalls = activeBalls.filter(ballData => {
+            if (ballData.body.position.y > height + 100 || ballData.body.position.x < -100 || ballData.body.position.x > width + 100) {
+                Composite.remove(engine.world, ballData.body);
+                return false;
+            }
+            return true;
+        });
+
+        drawOverlay();
+        updateUI();
+    });
+
+    // ==========================================
+    // 4. 理论曲线叠加渲染 (Canvas API)
+    // ==========================================
+    const overlayCanvas = document.getElementById('overlay-canvas');
+    const ctx = overlayCanvas.getContext('2d');
+
+    function drawOverlay() {
+        overlayCanvas.width = window.innerWidth;
+        overlayCanvas.height = window.innerHeight;
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+        if (totalBallsFallen === 0) return;
+
+        const maxCount = Math.max(...binCounts);
+        if (maxCount === 0) return;
+
+        const binsStartY = startY + PEGS_ROWS * PEGS_SPACING;
+        const binsStartX = centerX - (PEGS_ROWS * PEGS_SPACING) / 2;
+        const numBins = PEGS_ROWS + 1;
+        const floorY = binsStartY + height * 0.45;
+
+        // 视觉映射系数 (预留顶部一点空间)
+        const visualHeightFactor = (floorY - binsStartY - 25) / maxCount;
+
+        const mu = PEGS_ROWS / 2; 
+        const variance = PEGS_ROWS * 0.5 * 0.5; 
+        const sigma = Math.sqrt(variance);
+        const peakProb = 1 / (sigma * Math.sqrt(2 * Math.PI));
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#ff5252'; 
+        ctx.lineWidth = 3;
+        
+        for (let i = 0; i <= numBins; i += 0.1) {
+            let x = i;
+            let prob = (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(-Math.pow(x - mu, 2) / (2 * variance));
+            
+            let curveY = (prob / peakProb) * (maxCount * visualHeightFactor);
+            let screenX = binsStartX + x * PEGS_SPACING;
+            let screenY = floorY - curveY;
+
+            if (i === 0) {
+                ctx.moveTo(screenX, screenY);
+            } else {
+                ctx.lineTo(screenX, screenY);
+            }
+        }
+        ctx.stroke();
+    }
+
+    // ==========================================
+    // 5. UI 交互逻辑
+    // ==========================================
+    const $ = (id) => document.getElementById(id);
+
+    function updateUI() {
+        const maxCount = Math.max(...binCounts);
+        $('out-total').innerText = totalBallsFallen;
+        $('out-max').innerText = maxCount;
+    }
+
+    $('spawn-rate').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        $('val-rate').innerText = val;
+        spawnRate = 61 - val; 
+    });
+
+    $('btn-toggle').addEventListener('click', (e) => {
+        isSpawning = !isSpawning;
+        e.target.innerText = isSpawning ? "停止掉落" : "开始掉落";
+        e.target.style.backgroundColor = isSpawning ? "#ff5252" : "#005f73";
+        e.target.style.borderColor = isSpawning ? "#ff5252" : "var(--accent-blue)";
+    });
+
+    $('btn-reset').addEventListener('click', () => {
+        isSpawning = false;
+        $('btn-toggle').innerText = "开始掉落";
+        $('btn-toggle').style.backgroundColor = "#005f73";
+        buildBoard();
+    });
+
+    window.addEventListener('resize', () => {
+        render.canvas.width = window.innerWidth;
+        render.canvas.height = window.innerHeight;
+        buildBoard();
+    });
+
+    buildBoard();
+    $('spawn-rate').dispatchEvent(new Event('input')); 
+
+</script>
+</body>
+</html>

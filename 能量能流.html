@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大学物理：波的能量传输 3D 演练模型</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --panel-bg: rgba(37, 37, 38, 0.95);
+            --border-color: #454545;
+            --text-main: #cccccc;
+            --accent-blue: #4fc1ff;
+            --accent-green: #b5cea8;
+            --accent-orange: #ce9178;
+            --accent-yellow: #dcdcaa;
+        }
+        body { margin: 0; overflow: hidden; background-color: var(--bg-color); color: var(--text-main); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        /* 工业级 UI 侧边栏 */
+        #ui-panel {
+            position: absolute; top: 20px; right: 20px; width: 380px; z-index: 10;
+            background: var(--panel-bg); border: 1px solid var(--border-color);
+            border-radius: 4px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            display: flex; flex-direction: column; max-height: calc(100vh - 40px); overflow-y: auto;
+        }
+        .panel-header { padding: 15px 20px; border-bottom: 1px solid var(--border-color); font-weight: bold; color: #fff; letter-spacing: 1px; }
+        .panel-section { padding: 15px 20px; border-bottom: 1px solid var(--border-color); }
+        .panel-section:last-child { border-bottom: none; }
+        
+        /* 思想实验步骤导航 */
+        .step-btn {
+            display: block; width: 100%; padding: 10px; margin-bottom: 8px;
+            background: #2d2d30; border: 1px solid var(--border-color);
+            color: var(--text-main); text-align: left; cursor: pointer;
+            border-radius: 3px; font-size: 13px; transition: all 0.2s;
+        }
+        .step-btn:hover { background: #3e3e42; }
+        .step-btn.active { background: #094771; border-color: var(--accent-blue); color: #fff; }
+        
+        /* 实时参数仪表盘 */
+        .param-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 12px; align-items: center; }
+        .param-row input[type="range"] { flex: 1; margin: 0 10px; accent-color: var(--accent-blue); }
+        
+        /* 公式与解释展示区 */
+        #formula-box {
+            background: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid var(--border-color);
+            font-family: 'Consolas', monospace; font-size: 13px; line-height: 1.6;
+        }
+        .math { color: var(--accent-yellow); font-style: italic; }
+        .highlight { color: var(--accent-green); font-weight: bold; }
+        
+        #axis-legend {
+            position: absolute; bottom: 20px; left: 20px; z-index: 10;
+            font-family: 'Consolas', monospace; font-size: 12px; color: #888;
+            background: rgba(30,30,30,0.8); padding: 10px; border: 1px solid #333; border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-panel">
+    <div class="panel-header">弹性连续介质能量流模型</div>
+    
+    <div class="panel-section">
+        <div style="font-size: 12px; color: #888; margin-bottom: 10px;">物理源参数 (波源 & 介质)</div>
+        <div class="param-row"><span>振幅 A</span><input type="range" id="p-A" min="0.5" max="2" step="0.1" value="1.0"><span id="v-A">1.0 m</span></div>
+        <div class="param-row"><span>频率 f</span><input type="range" id="p-f" min="0.5" max="3" step="0.1" value="1.0"><span id="v-f">1.0 Hz</span></div>
+        <div class="param-row"><span>波速 v</span><input type="range" id="p-v" min="2" max="10" step="0.5" value="4.0"><span id="v-v">4.0 m/s</span></div>
+    </div>
+
+    <div class="panel-section">
+        <div style="font-size: 12px; color: #888; margin-bottom: 10px;">思想实验推演路径 (微元法)</div>
+        <button class="step-btn active" data-step="1">1. 能量密度 w (微观瞬时)</button>
+        <button class="step-btn" data-step="2">2. 平均能量密度 w̄ (宏观常量)</button>
+        <button class="step-btn" data-step="3">3. 能流 P (微观流动)</button>
+        <button class="step-btn" data-step="4">4. 平均能流 P̄ (工程功率)</button>
+        <button class="step-btn" data-step="5">5. 波的强度 I (归一化探头)</button>
+    </div>
+
+    <div class="panel-section">
+        <div id="formula-box">
+            <!-- 内容由 JS 动态注入 -->
+        </div>
+    </div>
+</div>
+
+<div id="axis-legend">
+    <span style="color:#ff6b6b">X轴: 波传播方向</span> | <span style="color:#4fc1ff">Y轴: 振动方向</span><br>
+    介质密度 ρ = 1 kg/m³ | 管道截面 S = 4π m²
+</div>
+
+<div id="canvas-container"></div>
+
+<!-- Import Map -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ==========================================
+    // 1. 物理引擎与状态管理
+    // ==========================================
+    const Physics = {
+        rho: 1.0,       // 介质密度 kg/m^3
+        radius: 2.0,    // 介质柱半径 m
+        A: 1.0, f: 1.0, v: 4.0,
+        get omega() { return 2 * Math.PI * this.f; },
+        get k() { return this.omega / this.v; },
+        get S() { return Math.PI * Math.pow(this.radius, 2); }
+    };
+
+    const State = {
+        currentStep: 1, // 1: w, 2: w_avg, 3: P, 4: P_avg, 5: I
+        time: 0
+    };
+
+    // ==========================================
+    // 2. 场景与 CAD 渲染器设置
+    // ==========================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1e1e1e);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(12, 8, 18);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 0, 0);
+
+    // 正交网格 (CAD 风格基底)
+    const gridHelper = new THREE.GridHelper(40, 40, 0x454545, 0x2a2a2a);
+    gridHelper.position.y = -3;
+    scene.add(gridHelper);
+
+    // 精确坐标轴 (禁用 Z 轴，仅突出 X传播 与 Y振动)
+    const axesHelper = new THREE.AxesHelper(8);
+    scene.add(axesHelper);
+
+    // ==========================================
+    // 3. 构建物理微元组件
+    // ==========================================
+    const pipeGroup = new THREE.Group();
+    scene.add(pipeGroup);
+
+    // [介质外壳]: 半透明线框圆柱
+    const pipeGeom = new THREE.CylinderGeometry(Physics.radius, Physics.radius, 30, 32, 1, true);
+    pipeGeom.rotateZ(Math.PI / 2);
+    const pipeMat = new THREE.MeshBasicMaterial({ color: 0x555555, wireframe: true, transparent: true, opacity: 0.3 });
+    const pipeOutline = new THREE.Mesh(pipeGeom, pipeMat);
+    pipeGroup.add(pipeOutline);
+
+    // [能量流体]: 基于物理方程的着色器
+    const fluidGeom = new THREE.CylinderGeometry(Physics.radius * 0.98, Physics.radius * 0.98, 30, 64, 128, true);
+    fluidGeom.rotateZ(Math.PI / 2);
+    const fluidMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uA: { value: Physics.A },
+            uK: { value: Physics.k },
+            uOmega: { value: Physics.omega },
+            uIsAvg: { value: false } // 是否开启时间长曝光
+        },
+        vertexShader: `
+            varying vec3 vPos;
+            void main() {
+                vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                vPos = worldPos.xyz;
+                gl_Position = projectionMatrix * viewMatrix * worldPos;
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            uniform float uA;
+            uniform float uK;
+            uniform float uOmega;
+            uniform bool uIsAvg;
+            varying vec3 vPos;
+            
+            void main() {
+                // CAD 工业蓝
+                vec3 baseColor = vec3(0.31, 0.75, 1.0);
+                float density = 0.0;
+                
+                if (uIsAvg) {
+                    // 平均能量密度: 不随时间和空间剧烈波动，sin²的平均值为 0.5
+                    density = 0.5 * pow(uA, 2.0); 
+                } else {
+                    // 瞬时能量密度公式: w ∝ A² * sin²(kx - ωt)
+                    float phase = uK * vPos.x - uOmega * uTime;
+                    density = pow(uA, 2.0) * pow(sin(phase), 2.0);
+                }
+                
+                // 映射到透明度和亮度以表现能量聚集
+                float alpha = clamp(density * 0.6, 0.05, 0.8);
+                gl_FragColor = vec4(baseColor * (density + 0.5), alpha);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+    });
+    const energyFluid = new THREE.Mesh(fluidGeom, fluidMat);
+    pipeGroup.add(energyFluid);
+
+    // [探针 1: 体积微元 dV]
+    const dVGeom = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+    const dVMat = new THREE.MeshBasicMaterial({ color: 0xb5cea8, wireframe: true });
+    const volumeProbe = new THREE.Mesh(dVGeom, dVMat);
+    volumeProbe.position.set(-2, 0, 0);
+    pipeGroup.add(volumeProbe);
+
+    // [探针 2: 截面收费站 S]
+    const crossGeom = new THREE.CircleGeometry(Physics.radius + 0.2, 64);
+    crossGeom.rotateY(Math.PI / 2);
+    const crossMat = new THREE.MeshBasicMaterial({ color: 0xce9178, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false });
+    const crossProbe = new THREE.Mesh(crossGeom, crossMat);
+    crossProbe.position.set(3, 0, 0);
+    crossProbe.visible = false;
+    pipeGroup.add(crossProbe);
+
+    // [探针 3: 截面外框 (加深视觉)]
+    const edgesGeom = new THREE.EdgesGeometry(crossGeom);
+    const edgesMat = new THREE.LineBasicMaterial({ color: 0xce9178, linewidth: 2 });
+    const crossEdges = new THREE.LineSegments(edgesGeom, edgesMat);
+    crossProbe.add(crossEdges);
+
+    // [探针 4: 归一化单位面积 1m²]
+    const unitGeom = new THREE.PlaneGeometry(1, 1);
+    unitGeom.rotateY(Math.PI / 2);
+    const unitMat = new THREE.MeshBasicMaterial({ color: 0xdcdcaa, wireframe: true });
+    const unitProbe = new THREE.Mesh(unitGeom, unitMat);
+    unitProbe.position.set(0.01, 0, 0); // 略微浮出 S 截面
+    unitProbe.visible = false;
+    crossProbe.add(unitProbe);
+
+    // ==========================================
+    // 4. UI 逻辑与教案文本装载
+    // ==========================================
+    const $ = (id) => document.getElementById(id);
+    const formulaBox = $('formula-box');
+
+    // 教案文案与公式配置 (遵循此前的物理推导逻辑)
+    const stepContents = {
+        1: `
+            <div style="color: #b5cea8; margin-bottom:10px;">■ 瞬时状态 (空间切片)</div>
+            取极薄体积微元 <span class="math">dV = S dx</span>，其总机械能(动+势)随相位剧烈震荡。<br><br>
+            <span style="color:#888">瞬时能量密度：</span><br>
+            <span class="math highlight">w = dE/dV = ρA²ω²sin²(ωt - kx)</span><br><br>
+            <i>观察左侧绿色方框 dV，流体亮度(能量)正呈脉冲式闪烁。</i>
+        `,
+        2: `
+            <div style="color: #b5cea8; margin-bottom:10px;">■ 长曝光状态 (时间均化)</div>
+            在一个周期 T 内积分，抹平明暗交替的脉冲。代表介质容纳能量的基础容量。<br><br>
+            <span style="color:#888">平均能量密度 (sin²均值为 1/2)：</span><br>
+            <span class="math highlight">w̄ = ½ ρA²ω²</span><br><br>
+            <i>波动被抹平，介质呈现均匀的能量承载态。该值仅由波源和介质决定。</i>
+        `,
+        3: `
+            <div style="color: #ce9178; margin-bottom:10px;">■ 动态通量 (截面收费站)</div>
+            引入波速 <span class="math">v</span>。在 dt 时间内，穿过截面 S 的能量体积为 <span class="math">dV = S·v dt</span>。<br><br>
+            <span style="color:#888">瞬时能流 (即瞬时功率)：</span><br>
+            <span class="math highlight">P = dE/dt = w·S·v</span><br><br>
+            <i>观察右侧红色截面，能量呈波包状穿过截面，瞬时功率剧烈起伏。</i>
+        `,
+        4: `
+            <div style="color: #ce9178; margin-bottom:10px;">■ 宏观输出 (功率平滑)</div>
+            工程上极少关注纳秒级瞬时功率。对 P 在一个周期内求平均，得到整体能量输送率。<br><br>
+            <span style="color:#888">平均能流 (系统的宏观输出功率)：</span><br>
+            <span class="math highlight">P̄ = w̄·S·v</span><br><br>
+            <i>红面处的能量流变得平稳，代表超声波发射器或激光器的恒定额定功率 W。</i>
+        `,
+        5: `
+            <div style="color: #dcdcaa; margin-bottom:10px;">■ 终极归一化 (剥离面积)</div>
+            为了公平比较不同粗细的光束/声波的破坏力，除以截面积 S。<br><br>
+            <span style="color:#888">平均能流密度 / 强度：</span><br>
+            <span class="math highlight">I = P̄ / S = w̄·v = ½ ρA²ω²v</span><br><br>
+            <i>观察红色截面中心的黄色 1m² 探头。这是物理学衡量波“绝对强度”的核心量。</i>
+        `
+    };
+
+    function updateStep(step) {
+        State.currentStep = step;
+        
+        // 更新 UI 按钮高亮
+        document.querySelectorAll('.step-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelector(`.step-btn[data-step="${step}"]`).classList.add('active');
+        
+        // 更新教案文本
+        formulaBox.innerHTML = stepContents[step];
+
+        // 核心渲染逻辑状态机
+        switch(step) {
+            case 1:
+                volumeProbe.visible = true;
+                crossProbe.visible = false;
+                unitProbe.visible = false;
+                fluidMat.uniforms.uIsAvg.value = false;
+                break;
+            case 2:
+                volumeProbe.visible = true;
+                crossProbe.visible = false;
+                unitProbe.visible = false;
+                fluidMat.uniforms.uIsAvg.value = true;
+                break;
+            case 3:
+                volumeProbe.visible = false;
+                crossProbe.visible = true;
+                unitProbe.visible = false;
+                fluidMat.uniforms.uIsAvg.value = false;
+                break;
+            case 4:
+                volumeProbe.visible = false;
+                crossProbe.visible = true;
+                unitProbe.visible = false;
+                fluidMat.uniforms.uIsAvg.value = true;
+                break;
+            case 5:
+                volumeProbe.visible = false;
+                crossProbe.visible = true;
+                unitProbe.visible = true;
+                fluidMat.uniforms.uIsAvg.value = true;
+                break;
+        }
+    }
+
+    // 绑定按钮事件
+    document.querySelectorAll('.step-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            updateStep(parseInt(e.target.dataset.step));
+        });
+    });
+
+    // 绑定参数滑动条事件
+    ['A', 'f', 'v'].forEach(param => {
+        $(`p-${param}`).addEventListener('input', (e) => {
+            Physics[param] = parseFloat(e.target.value);
+            let unit = param === 'A' ? 'm' : (param === 'f' ? 'Hz' : 'm/s');
+            $(`v-${param}`).innerText = Physics[param].toFixed(1) + ' ' + unit;
+            
+            // 实时同步给 Shader
+            fluidMat.uniforms.uA.value = Physics.A;
+            fluidMat.uniforms.uOmega.value = Physics.omega;
+            fluidMat.uniforms.uK.value = Physics.k;
+        });
+    });
+
+    // 初始化第一步
+    updateStep(1);
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ==========================================
+    // 5. 渲染引擎主循环
+    // ==========================================
+    const clock = new THREE.Clock();
+    
+    function animate() {
+        requestAnimationFrame(animate);
+        const dt = clock.getDelta();
+        State.time += dt;
+
+        // 向物理 Shader 注入时间
+        fluidMat.uniforms.uTime.value = State.time;
+
+        // 让体积探针 dV 在状态 1 和 2 时产生轻微的呼吸动画提示其存在
+        if (State.currentStep === 1 || State.currentStep === 2) {
+            const scale = 1.0 + 0.05 * Math.sin(State.time * 3);
+            volumeProbe.scale.set(scale, scale, scale);
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    
+    animate();
+</script>
+</body>
+</html>

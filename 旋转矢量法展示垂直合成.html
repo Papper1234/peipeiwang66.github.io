@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>垂直谐振动合成：高性能 60FPS 投影实验室</title>
+    <style>
+        :root {
+            --bg: #050811;
+            --panel: rgba(15, 20, 35, 0.85);
+            --cx: #00f2fe; 
+            --cy: #ff3366; 
+            --csum: #00ff88; 
+            --ctext: #e2e8f0;
+        }
+
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: var(--bg); color: var(--ctext); font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; }
+        
+        canvas { position: absolute; top: 0; left: 0; z-index: 0; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+
+        #ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; pointer-events: none; z-index: 10; overflow: hidden;}
+        
+        .glass-panel {
+            pointer-events: auto; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px); border-radius: 12px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            margin: 20px; transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s;
+        }
+
+        #controls { width: 300px; height: fit-content; }
+        #info-panel { width: 360px; position: absolute; top: 40px; right: 0; transform: translateX(0); opacity: 1; }
+        #info-panel.collapsed { transform: translateX(120%); opacity: 0; pointer-events: none; }
+
+        #toggle-panel-btn {
+            position: absolute; top: 20px; right: 20px; pointer-events: auto; background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 10px 16px; border-radius: 8px;
+            font-weight: bold; cursor: pointer; backdrop-filter: blur(10px); transition: 0.3s; z-index: 20;
+        }
+        #toggle-panel-btn:hover { background: rgba(255,255,255,0.2); box-shadow: 0 0 15px rgba(255,255,255,0.2); }
+
+        h1 { margin: 0 0 15px 0; font-size: 17px; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 8px; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8);}
+        .control-group { margin-bottom: 15px; background: rgba(0,0,0,0.4); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);}
+        label { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-bottom: 8px; color: #cbd5e1; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--csum); }
+
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+        .btn-preset { padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); color: #fff; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s; }
+        .btn-preset:hover { background: rgba(255,255,255,0.15); transform: translateY(-2px); }
+        
+        #pause-btn { background: var(--csum); color: #000; width: 100%; margin-top: 10px; font-size: 14px; border: none; padding: 12px; border-radius: 8px; font-weight:bold; cursor: pointer; transition:0.3s;}
+        #pause-btn.paused { background: #facc15; }
+
+        .math-box { font-size: 14px; line-height: 1.6; color: #cbd5e1; }
+        .formula { background: rgba(0,0,0,0.5); padding: 12px; border-radius: 8px; border-left: 4px solid var(--csum); margin: 12px 0; font-family: monospace; font-size: 14px; color: #fff; overflow-x: auto;}
+        .chirality { font-weight: bold; font-size: 16px; margin-top: 8px; }
+
+        #hint { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 13px; color: #94a3b8; pointer-events: none; background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(5px);}
+    </style>
+</head>
+<body>
+
+    <canvas id="mainCanvas"></canvas>
+
+    <div id="ui-container">
+        <button id="toggle-panel-btn" onclick="togglePanel()">✖ 隐藏理论推演面板</button>
+
+        <div id="controls" class="glass-panel">
+            <h1>⚙️ 实验控制台</h1>
+            <div class="control-group">
+                <label style="color:var(--cy)">Y 振幅 (Ay): <span id="val-Ay">120</span></label>
+                <input type="range" id="input-Ay" min="40" max="180" value="120">
+            </div>
+            <div class="control-group">
+                <label style="color:var(--cx)">X 振幅 (Ax): <span id="val-Ax">150</span></label>
+                <input type="range" id="input-Ax" min="40" max="180" value="150">
+            </div>
+            <div class="control-group">
+                <label style="color:#facc15">相位差 (Δφ): <span id="val-dp">90°</span></label>
+                <input type="range" id="input-dp" min="-180" max="180" value="90">
+            </div>
+            
+            <button id="pause-btn" onclick="togglePlay()">⏸ 暂停动画验证投影</button>
+
+            <div class="btn-grid">
+                <button class="btn-preset" onclick="setDP(0)">线偏振 (0°)</button>
+                <button class="btn-preset" onclick="setDP(180)">反相 (180°)</button>
+                <button class="btn-preset" onclick="setDP(90)" style="color:var(--cy); border-color:var(--cy);">右旋 (90°)</button>
+                <button class="btn-preset" onclick="setDP(-90)" style="color:var(--cx); border-color:var(--cx);">左旋 (-90°)</button>
+            </div>
+        </div>
+
+        <div id="info-panel" class="glass-panel">
+            <h1>📐 物理推演笔记</h1>
+            <div class="math-box">
+                <div>分振动投影方程：</div>
+                <div class="formula">
+                    <span style="color:var(--cx)">x = Ax · cos(ωt)</span><br>
+                    <span style="color:var(--cy)">y = Ay · cos(ωt + Δφ)</span>
+                </div>
+                <div>合成轨迹方程 (消去时间参数 t)：</div>
+                <div class="formula" style="font-size: 13px;">
+                    x²/Ax² + y²/Ay² - 2xy/(AxAy)cosΔφ = sin²Δφ
+                </div>
+                <div style="margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 10px;">
+                    <div>旋向判定 (基于角动量 Lz = xvy - yvx)：</div>
+                    <div id="chirality-text" class="chirality">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="hint">🖱️ 鼠标滚轮缩放画面 | 鼠标拖拽平移视口</div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let Ax = 150, Ay = 120, dPhi = 90;
+        let time = 0; const omega = 0.035;
+        let isPlaying = true;
+        let trace = [];
+
+        let W, H, centerX, centerY;
+        let camX = 0, camY = 0, zoom = 1;
+        let isDragging = false;
+        let startMouseX, startMouseY;
+        
+        const GAP = 220; 
+        const AXIS_LEN = 210; 
+
+        function resize() {
+            W = window.innerWidth; H = window.innerHeight;
+            canvas.width = W; canvas.height = H;
+            centerX = W / 2; centerY = H / 2;
+            const minDim = Math.min(W, H);
+            zoom = minDim < 800 ? 0.8 : 1.0; 
+            camX = 0; camY = 0;
+            trace = []; 
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 视口控制
+        canvas.addEventListener('mousedown', e => { isDragging = true; startMouseX = e.clientX - camX; startMouseY = e.clientY - camY; });
+        window.addEventListener('mousemove', e => { if(isDragging) { camX = e.clientX - startMouseX; camY = e.clientY - startMouseY; } });
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('mouseleave', () => isDragging = false);
+        canvas.addEventListener('wheel', e => {
+            e.preventDefault();
+            zoom = Math.max(0.3, Math.min(zoom - e.deltaY * 0.0015, 4)); 
+        }, {passive: false});
+
+        let panelVisible = true;
+        window.togglePanel = function() {
+            panelVisible = !panelVisible;
+            const panel = document.getElementById('info-panel');
+            const btn = document.getElementById('toggle-panel-btn');
+            if(panelVisible) {
+                panel.classList.remove('collapsed');
+                btn.innerText = "✖ 隐藏理论推演面板";
+            } else {
+                panel.classList.add('collapsed');
+                btn.innerText = "📝 显示理论推演面板";
+            }
+        };
+
+        const inputs = ['Ax', 'Ay', 'dp'];
+        inputs.forEach(id => {
+            document.getElementById('input-'+id).oninput = (e) => {
+                let v = parseInt(e.target.value);
+                if(id === 'Ax') Ax = v; else if(id === 'Ay') Ay = v; else dPhi = v;
+                document.getElementById('val-'+id).innerText = v + (id==='dp'?'°':'');
+                trace = []; updateMath();
+            };
+        });
+
+        window.setDP = function(v) {
+            dPhi = v;
+            document.getElementById('input-dp').value = v;
+            document.getElementById('val-dp').innerText = v + '°';
+            trace = []; updateMath();
+        }
+
+        window.togglePlay = function() {
+            isPlaying = !isPlaying;
+            const btn = document.getElementById('pause-btn');
+            btn.innerText = isPlaying ? "⏸ 暂停动画验证投影" : "▶ 继续播放演化";
+            btn.className = isPlaying ? "" : "paused";
+        }
+
+        function updateMath() {
+            const rad = dPhi * Math.PI / 180;
+            const s = Math.sin(rad);
+            const el = document.getElementById('chirality-text');
+            if (Math.abs(s) < 0.01) {
+                el.innerText = "退化为直线极化 (无旋向)";
+                el.style.color = "#94a3b8";
+            } else if (s > 0) {
+                el.innerText = "顺时针 (右旋 Lz < 0)";
+                el.style.color = "var(--cy)";
+            } else {
+                el.innerText = "逆时针 (左旋 Lz > 0)";
+                el.style.color = "var(--cx)";
+            }
+        }
+
+        // ================= 极速绘图原语 (剔除 shadowBlur) =================
+        function drawArrow(x, y, len, angle, coreColor, outerColor) {
+            ctx.save();
+            ctx.translate(x, y); ctx.rotate(angle);
+            
+            // Fast Glow：外层半透明加粗，内层实体
+            ctx.lineCap = "round";
+            ctx.lineWidth = 10; ctx.strokeStyle = outerColor; 
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+            ctx.lineWidth = 4; ctx.strokeStyle = coreColor;
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+            
+            // 箭头头部
+            ctx.fillStyle = coreColor;
+            ctx.beginPath(); ctx.moveTo(len + 4, 0); ctx.lineTo(len - 14, -8); ctx.lineTo(len - 14, 8); ctx.closePath(); ctx.fill();
+            ctx.restore();
+        }
+
+        function drawAxis(x, y, length, isVert, label) {
+            ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3;
+            ctx.beginPath();
+            if(isVert) { ctx.moveTo(x, y - length); ctx.lineTo(x, y + length); } 
+            else { ctx.moveTo(x - length, y); ctx.lineTo(x + length, y); }
+            ctx.stroke();
+            
+            // 用描边文字替代阴影实现文字高亮防遮挡
+            const lblX = isVert ? x - 35 : x + length + 20;
+            const lblY = isVert ? y - length - 15 : y + 10;
+            ctx.font = "italic bold 32px Arial";
+            ctx.lineWidth = 4; ctx.strokeStyle = "#000000"; ctx.strokeText(label, lblX, lblY);
+            ctx.fillStyle = "#ffffff"; ctx.fillText(label, lblX, lblY);
+        }
+
+        function drawRefCircle(x, y, radius) {
+            ctx.beginPath(); 
+            ctx.arc(x, y, radius, 0, Math.PI*2);
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.7)"; 
+            ctx.lineWidth = 3;       
+            ctx.setLineDash([10, 8]);
+            ctx.stroke();
+            ctx.setLineDash([]);     
+        }
+
+        // ================= 主循环 =================
+        function loop() {
+            ctx.clearRect(0, 0, W, H);
+            
+            ctx.save();
+            ctx.translate(centerX + camX, centerY + camY);
+            ctx.scale(zoom, zoom);
+
+            if(isPlaying) time += omega;
+            const rad = dPhi * Math.PI / 180;
+            
+            const posLY = { x: -GAP, y: -GAP }; 
+            const posRX = { x: GAP, y: GAP };   
+            const posMain = { x: GAP, y: -GAP };
+
+            // 1. 左上：Y振动源
+            drawAxis(posLY.x, posLY.y, AXIS_LEN, true, "y");
+            drawRefCircle(posLY.x, posLY.y, Ay); 
+            const thetaY = time + rad + Math.PI/2;
+            const y_val = Ay * Math.sin(thetaY);
+            const phasorY_tip = { x: posLY.x + Ay * Math.cos(thetaY), y: posLY.y + y_val };
+            drawArrow(posLY.x, posLY.y, Ay, thetaY, "#ff3366", "rgba(255, 51, 102, 0.3)");
+            ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(posLY.x, posLY.y, 5, 0, 7); ctx.fill();
+
+            // 2. 右下：X振动源
+            drawAxis(posRX.x, posRX.y, AXIS_LEN, false, "x");
+            drawRefCircle(posRX.x, posRX.y, Ax); 
+            const thetaX = time;
+            const x_val = Ax * Math.cos(thetaX);
+            const phasorX_tip = { x: posRX.x + x_val, y: posRX.y + Ax * Math.sin(thetaX) };
+            drawArrow(posRX.x, posRX.y, Ax, thetaX, "#00f2fe", "rgba(0, 242, 254, 0.3)");
+            ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(posRX.x, posRX.y, 5, 0, 7); ctx.fill();
+
+            // 3. 右上：合成区
+            drawAxis(posMain.x, posMain.y, AXIS_LEN, true, "y");
+            drawAxis(posMain.x, posMain.y, AXIS_LEN, false, "x");
+            const currentS = { x: posMain.x + x_val, y: posMain.y + y_val };
+            
+            if(isPlaying) {
+                trace.push({x: currentS.x, y: currentS.y});
+                const limit = Math.floor((Math.PI * 2) / omega) + 5;
+                if(trace.length > limit) trace.shift();
+            }
+
+            // 核心优化：使用叠加描边替代 shadowBlur 实现霓虹发光
+            if(trace.length > 2) {
+                ctx.lineJoin = "round"; ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(trace[0].x, trace[0].y);
+                for(let i=1; i<trace.length; i++) ctx.lineTo(trace[i].x, trace[i].y);
+                
+                // 外层光晕 (极速)
+                ctx.lineWidth = 16; ctx.strokeStyle = "rgba(0, 255, 136, 0.15)"; ctx.stroke();
+                // 中层光晕
+                ctx.lineWidth = 8; ctx.strokeStyle = "rgba(0, 255, 136, 0.5)"; ctx.stroke();
+                // 内层高亮核心
+                ctx.lineWidth = 4; ctx.strokeStyle = "#ffffff"; ctx.stroke();
+            }
+            
+            ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(currentS.x, currentS.y, 8, 0, 7); ctx.fill();
+            drawArrow(posMain.x, posMain.y, Math.hypot(x_val, y_val), Math.atan2(y_val, x_val), "#00ff88", "rgba(0, 255, 136, 0.3)");
+
+            // 4. 投影辅助线
+            ctx.setLineDash([8, 8]); ctx.lineWidth = 2; 
+            
+            ctx.strokeStyle = "rgba(255, 51, 102, 0.7)";
+            ctx.beginPath(); ctx.moveTo(phasorY_tip.x, phasorY_tip.y); ctx.lineTo(posLY.x, phasorY_tip.y); ctx.lineTo(currentS.x, currentS.y); ctx.stroke();
+            
+            ctx.strokeStyle = "rgba(0, 242, 254, 0.7)";
+            ctx.beginPath(); ctx.moveTo(phasorX_tip.x, phasorX_tip.y); ctx.lineTo(phasorX_tip.x, posRX.y); ctx.lineTo(currentS.x, currentS.y); ctx.stroke();
+            
+            ctx.setLineDash([]); 
+            ctx.restore();
+
+            requestAnimationFrame(loop);
+        }
+        
+        updateMath();
+        loop();
+    </script>
+</body>
+</html>

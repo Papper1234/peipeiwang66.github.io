@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 简谐运动解析与旋转矢量实验室</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #050a15; --panel: rgba(10, 20, 40, 0.85); --primary: #00f2fe; --accent: #ff0055; --vec: #00ff88; }
+        body { margin: 0; overflow: hidden; background-color: var(--bg); color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel { position: absolute; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(15px); border-radius: 12px; z-index: 10; padding: 18px; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.6); }
+        
+        #controls { top: 20px; left: 20px; width: 300px; }
+        #math-panel { top: 20px; right: 20px; width: 460px; max-height: calc(100vh - 40px); overflow-y: auto; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease; }
+        #math-panel.hidden { transform: translateX(calc(100% + 40px)); opacity: 0; pointer-events: none; }
+        #math-panel::-webkit-scrollbar { width: 6px; }
+        #math-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 3px; }
+        
+        h1 { margin: 0 0 12px 0; font-size: 18px; color: var(--primary); border-bottom: 1px solid rgba(0, 242, 254, 0.2); padding-bottom: 8px; text-shadow: 0 0 10px rgba(0,242,254,0.3);}
+        h2 { font-size: 15px; color: var(--vec); margin: 15px 0 8px 0; border-left: 4px solid var(--vec); padding-left: 8px;}
+        
+        .control-group { margin-bottom: 15px; }
+        label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; font-weight: bold; color: #cbd5e1; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--primary); }
+        
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; }
+        .btn-point { padding: 10px 5px; border: 1px solid rgba(0, 242, 254, 0.3); border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; background: rgba(0, 242, 254, 0.05); color: #00f2fe; transition: 0.2s; text-align: center;}
+        .btn-point:hover { background: rgba(0, 242, 254, 0.2); box-shadow: 0 0 10px rgba(0, 242, 254, 0.4);}
+        
+        button.action-btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 14px; margin-top: 5px; }
+        .btn-toggle { background: var(--primary); color: #000; }
+        .btn-toggle:hover { box-shadow: 0 0 15px rgba(0,242,254,0.5); }
+        .btn-view { background: rgba(255, 255, 255, 0.1); color: #fff; border: 1px solid rgba(255, 255, 255, 0.2); margin-top: 15px;}
+
+        .math-step { margin-bottom: 12px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; font-size: 13px; line-height: 1.6;}
+        .formula-hl { background: rgba(255, 255, 255, 0.05); padding: 6px 10px; border-radius: 4px; display: block; margin: 8px 0; color: #facc15; border-left: 2px solid #facc15;}
+
+        .data-card { margin-top: 10px; padding: 12px; background: rgba(0,0,0,0.5); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-around; }
+        .data-item { text-align: center; }
+        .data-label { font-size: 11px; color: #94a3b8; }
+        .data-val { font-size: 18px; font-weight: bold; font-family: 'Courier New', monospace; color: var(--primary); margin-top: 4px;}
+
+        .label-3d { font-weight: bold; font-size: 14px; padding: 3px 8px; border-radius: 4px; background: rgba(0,0,0,0.7); border: 1px solid rgba(0,242,254,0.3); color: #fff; pointer-events: none;}
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls" class="glass-panel">
+        <h1>⚙️ 题目状态控制台</h1>
+        
+        <div class="data-card" style="margin-bottom: 15px;">
+            <div class="data-item"><div class="data-label">时间 t (s)</div><div id="ui-t" class="data-val">0.00</div></div>
+            <div class="data-item"><div class="data-label">位移 x (m)</div><div id="ui-x" class="data-val">0.060</div></div>
+        </div>
+        
+        <div class="control-group">
+            <label><span>手动时间漫游 (t)</span></label>
+            <input type="range" id="input-t" min="0" max="4" value="0" step="0.01">
+        </div>
+        
+        <label>考点场景瞬移定位：</label>
+        <div class="btn-grid">
+            <div class="btn-point" onclick="jumpTo(0)">初态: t = 0<br><span style="font-size:10px;color:#94a3b8">求振动方程</span></div>
+            <div class="btn-point" onclick="jumpTo(0.5)">问(2): t = T/4<br><span style="font-size:10px;color:#94a3b8">t = 0.5s 状态</span></div>
+            <div class="btn-point" onclick="jumpTo(1.0)">问(3)起点: x = -0.06<br><span style="font-size:10px;color:#94a3b8">向负方向运动</span></div>
+            <div class="btn-point" onclick="jumpTo(1.8333)">问(3)终点: x = 0<br><span style="font-size:10px;color:#94a3b8">首次回平衡位置</span></div>
+        </div>
+
+        <button id="toggle-btn" class="action-btn btn-toggle">▶ 开始连续演化</button>
+        <button id="view-math-btn" class="action-btn btn-view">👁️ 隐藏右侧解题面板</button>
+        <div style="font-size: 10px; color: #64748b; margin-top: 15px; text-align: center;">按 [ P ] 键截取赛博风格课件图</div>
+    </div>
+
+    <div id="math-panel" class="glass-panel">
+        <h1>📐 物理题目双法解析</h1>
+        <div style="font-size: 12px; color: #94a3b8; margin-bottom: 15px;">已知条件：$A = 0.12$ m, $T = 2$ s $\implies \omega = 2\pi/T = \pi$ rad/s。</div>
+        
+        <h2>(1) 简谐振动表达式</h2>
+        <div class="math-step">
+            <b>方法一：公式推导法</b><br>
+            设方程为 $x = A \cos(\omega t + \phi_0)$。<br>
+            当 $t=0$ 时，$x_0 = 0.12 \cos\phi_0 = 0.06 \implies \cos\phi_0 = 0.5$。<br>
+            速度 $v_0 = -A\omega \sin\phi_0 > 0 \implies \sin\phi_0 < 0$。<br>
+            综合得初相 $\phi_0 = -\pi/3$。
+            <div class="formula-hl">$$ x(t) = 0.12 \cos(\pi t - \pi/3) \text{ (SI)} $$</div>
+        </div>
+        <div class="math-step">
+            <b>方法二：旋转矢量法（观左侧模型）</b><br>
+            在 $t=0$ 时刻，矢量投影在 $x$ 正半轴 $A/2$ 处。因向正方向运动，矢量端点必然在第四象限（圆周下半部分）。几何直观可见夹角为 $-60^\circ$ 即 $-\pi/3$。
+        </div>
+
+        <h2>(2) t = T/4 (0.5s) 时刻状态</h2>
+        <div class="math-step">
+            将 $t = 0.5$ 代入方程，此时相位 $\Phi = \pi(0.5) - \pi/3 = \pi/6$：<br>
+            位移：$x = 0.12 \cos(\pi/6) = 0.06\sqrt{3} \approx 0.104$ m<br>
+            速度：$v = -0.12\pi \sin(\pi/6) = -0.06\pi \approx -0.188$ m/s<br>
+            加速度：$a = -\omega^2 x = -\pi^2 (0.06\sqrt{3}) \approx -1.026$ m/s²<br>
+            <i>(可点击左侧对应按钮，观察矢量恰好转至第一象限 $30^\circ$ 处)</i>
+        </div>
+
+        <h2>(3) 特定区间运动时间</h2>
+        <div class="math-step">
+            <b>旋转矢量法秒杀：</b><br>
+            起点：$x = -0.06 (-A/2)$ 且向负方向运动 $\implies$ 矢量在第二象限，相位 $\Phi_1 = 2\pi/3$。<br>
+            终点：第一次回到平衡位置 $x = 0$ 且速度为正 $\implies$ 矢量在正下方的第三/四象限交界，相位 $\Phi_2 = 3\pi/2$。<br>
+            矢量扫过的角度：$\Delta\Phi = 3\pi/2 - 2\pi/3 = 5\pi/6$。<br>
+            所需时间：
+            <div class="formula-hl">$$ \Delta t = \frac{\Delta\Phi}{\omega} = \frac{5\pi/6}{\pi} = \frac{5}{6} \text{ s} \approx 0.833 \text{ s} $$</div>
+        </div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            // ================= 1. 引擎初始化 =================
+            const scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050a15, 0.02);
+            const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, -2, 28); // 视角中心调整
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            const labelRenderer = new THREE.CSS2DRenderer();
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.domElement.style.position = 'absolute';
+            labelRenderer.domElement.style.top = '0px';
+            labelRenderer.domElement.style.pointerEvents = 'none';
+            document.body.appendChild(labelRenderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableRotate = false;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const sun = new THREE.DirectionalLight(0xffffff, 1);
+            sun.position.set(5, 10, 15);
+            scene.add(sun);
+
+            // ================= 2. 物理常量与视觉放缩 =================
+            // 物理真实值 A = 0.12m 太小，为了 3D 显示放大 40 倍。即 3D 坐标 4.8 代表 0.12m。
+            const SCALE = 40; 
+            const A_phys = 0.12;
+            const A_vis = A_phys * SCALE; // 4.8
+            const omega = Math.PI; 
+            const phi0 = -Math.PI / 3; 
+
+            // 布局坐标
+            const phasorCenter = new THREE.Vector3(-8, 2, 0); // 左上：旋转矢量圆心
+            const axisCenter = new THREE.Vector3(0, -5, 0);   // 下方：一维 X 轴振动
+            const waveStartX = 0;                             // 右上：位移-时间图起点
+            const waveY = 2;
+
+            function createLabel(text, color, x, y) {
+                const div = document.createElement('div');
+                div.className = 'label-3d'; div.innerHTML = text; div.style.color = color;
+                const obj = new THREE.CSS2DObject(div);
+                obj.position.set(x, y, 0);
+                scene.add(obj); return obj;
+            }
+
+            // ---------- A. 旋转矢量图 (左上方) ----------
+            const circleGeo = new THREE.RingGeometry(A_vis, A_vis + 0.08, 64);
+            const circleMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe, side: THREE.DoubleSide, transparent:true, opacity:0.3 });
+            const circle = new THREE.Mesh(circleGeo, circleMat);
+            circle.position.copy(phasorCenter);
+            scene.add(circle);
+
+            // 十字刻度轴
+            const axisGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(phasorCenter.x - A_vis - 1, phasorCenter.y, 0), new THREE.Vector3(phasorCenter.x + A_vis + 1, phasorCenter.y, 0),
+                new THREE.Vector3(phasorCenter.x, phasorCenter.y - A_vis - 1, 0), new THREE.Vector3(phasorCenter.x, phasorCenter.y + A_vis + 1, 0)
+            ]);
+            scene.add(new THREE.LineSegments(axisGeo, new THREE.LineBasicMaterial({color: 0x445566})));
+            createLabel('O', '#fff', phasorCenter.x - 0.5, phasorCenter.y - 0.5);
+            createLabel('+A', '#00f2fe', phasorCenter.x + A_vis + 0.5, phasorCenter.y - 0.5);
+            createLabel('-A', '#00f2fe', phasorCenter.x - A_vis - 0.5, phasorCenter.y - 0.5);
+
+            // 旋转矢量
+            const phasorArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), phasorCenter, A_vis, 0x00ff88, 0.8, 0.5);
+            scene.add(phasorArrow);
+
+            // 矢量到X轴的投影辅助线 (从箭头尖端垂直下落到圆心的X轴)
+            const projGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,0)]);
+            const projLine = new THREE.Line(projGeo, new THREE.LineDashedMaterial({ color: 0x00ff88, dashSize: 0.3, gapSize: 0.2 }));
+            scene.add(projLine);
+
+            // ---------- B. 物理 X 轴振动 (正下方) ----------
+            const physAxisGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(axisCenter.x - A_vis - 2, axisCenter.y, 0), 
+                new THREE.Vector3(axisCenter.x + A_vis + 2, axisCenter.y, 0)
+            ]);
+            scene.add(new THREE.Line(physAxisGeo, new THREE.LineBasicMaterial({color: 0xffffff})));
+            createLabel('x=0', '#fff', axisCenter.x, axisCenter.y - 1);
+            createLabel('x=0.12', '#00f2fe', axisCenter.x + A_vis, axisCenter.y - 1);
+            createLabel('x=-0.12', '#00f2fe', axisCenter.x - A_vis, axisCenter.y - 1);
+
+            // 质点球体
+            const particle = new THREE.Mesh(new THREE.SphereGeometry(0.6, 32, 32), new THREE.MeshStandardMaterial({ color: 0xff0055, metalness: 0.5 }));
+            scene.add(particle);
+
+            // 连接矢量投影与实际质点的“相位追踪线”
+            const trackGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,0)]);
+            const trackLine = new THREE.Line(trackGeo, new THREE.LineBasicMaterial({ color: 0xff0055, transparent: true, opacity: 0.4 }));
+            scene.add(trackLine);
+
+            // ---------- C. x-t 展开波形图 (右上方) ----------
+            const MAX_POINTS = 500;
+            const waveGeo = new THREE.BufferGeometry();
+            const wavePos = new Float32Array(MAX_POINTS * 3);
+            waveGeo.setAttribute('position', new THREE.BufferAttribute(wavePos, 3));
+            const waveLine = new THREE.Line(waveGeo, new THREE.LineBasicMaterial({ color: 0xff0055, linewidth: 3 }));
+            waveLine.geometry.setDrawRange(0, 0);
+            scene.add(waveLine);
+
+            // 波形时间轴
+            const timeAxisGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(waveStartX, waveY, 0), new THREE.Vector3(waveStartX + 12, waveY, 0)
+            ]);
+            scene.add(new THREE.Line(timeAxisGeo, new THREE.LineDashedMaterial({ color: 0x445566, dashSize: 0.3, gapSize: 0.2 })));
+            createLabel('x-t 波形', '#ff0055', waveStartX + 5, waveY + A_vis + 1);
+
+            // ================= 3. 逻辑控制器 =================
+            let isPlaying = false;
+            let time = 0;
+            let waveHistory = [];
+            let isMathVisible = true;
+
+            const inputT = document.getElementById('input-t');
+            const uiT = document.getElementById('ui-t');
+            const uiX = document.getElementById('ui-x');
+            const toggleBtn = document.getElementById('toggle-btn');
+
+            document.getElementById('view-math-btn').onclick = (e) => {
+                isMathVisible = !isMathVisible;
+                const panel = document.getElementById('math-panel');
+                if (isMathVisible) {
+                    panel.classList.remove('hidden'); e.target.innerText = "👁️ 隐藏右侧解题面板";
+                } else {
+                    panel.classList.add('hidden'); e.target.innerText = "👁️ 显示右侧解题面板";
+                }
+            };
+
+            toggleBtn.onclick = () => {
+                isPlaying = !isPlaying;
+                toggleBtn.innerText = isPlaying ? "⏸ 暂停演化 (可手动拖拽时间)" : "▶ 开始连续演化";
+                toggleBtn.style.background = isPlaying ? "rgba(255,0,85,0.8)" : "var(--primary)";
+            };
+
+            inputT.oninput = (e) => {
+                isPlaying = false;
+                toggleBtn.innerText = "▶ 开始连续演化";
+                toggleBtn.style.background = "var(--primary)";
+                time = parseFloat(e.target.value);
+                updatePhysics(time, true); // 强制重绘画线
+            };
+
+            // 考点跳转功能
+            window.jumpTo = function(t_target) {
+                isPlaying = false;
+                toggleBtn.innerText = "▶ 继续演化";
+                toggleBtn.style.background = "var(--primary)";
+                time = t_target;
+                inputT.value = time;
+                updatePhysics(time, true);
+            };
+
+            function updatePhysics(t, resetTrace = false) {
+                // 计算物理量 (相位 = ωt + φ0)
+                const phase = omega * t + phi0;
+                // 物理位移
+                const x_phys = A_phys * Math.cos(phase);
+                // 视觉位移
+                const x_vis = x_phys * SCALE;
+
+                // UI 更新
+                uiT.innerText = t.toFixed(2);
+                uiX.innerText = x_phys.toFixed(3);
+                inputT.value = t;
+
+                // 1. 矢量更新
+                const vecDir = new THREE.Vector3(Math.cos(phase), Math.sin(phase), 0);
+                phasorArrow.setDirection(vecDir);
+                
+                // 矢量投影线 (垂直降落到圆心所在的 X 轴)
+                const tipX = phasorCenter.x + x_vis;
+                const tipY = phasorCenter.y + A_vis * Math.sin(phase);
+                const pArr = projLine.geometry.attributes.position.array;
+                pArr[0] = tipX; pArr[1] = tipY; pArr[2] = 0;
+                pArr[3] = tipX; pArr[4] = phasorCenter.y; pArr[5] = 0;
+                projLine.geometry.attributes.position.needsUpdate = true;
+                projLine.computeLineDistances();
+
+                // 2. 质点更新
+                particle.position.set(axisCenter.x + x_vis, axisCenter.y, 0);
+
+                // 追踪线 (连接圆内投影点到质点)
+                const tArr = trackLine.geometry.attributes.position.array;
+                tArr[0] = tipX; tArr[1] = phasorCenter.y; tArr[2] = 0;
+                tArr[3] = axisCenter.x + x_vis; tArr[4] = axisCenter.y; tArr[5] = 0;
+                trackLine.geometry.attributes.position.needsUpdate = true;
+
+                // 3. 波形图更新
+                if (resetTrace) waveHistory = []; // 如果是跳跃或拖拽，重置历史防乱线
+                
+                waveHistory.push({ x: x_vis, t: t });
+                if (waveHistory.length > MAX_POINTS) waveHistory.shift();
+
+                const wArr = waveLine.geometry.attributes.position.array;
+                const speed = 3.0; // 展开速度
+                for (let i = 0; i < waveHistory.length; i++) {
+                    const p = waveHistory[i];
+                    wArr[i*3] = waveStartX + (t - p.t) * speed; 
+                    wArr[i*3+1] = waveY + p.x; // 将X位移映射到波形的Y高度上
+                    wArr[i*3+2] = 0;
+                }
+                waveLine.geometry.attributes.position.needsUpdate = true;
+                waveLine.geometry.setDrawRange(0, waveHistory.length);
+            }
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+
+                if (isPlaying) {
+                    time += 0.016; // 按时间步长推进
+                    if (time > 4) { time = 0; waveHistory = []; } // 循环演示
+                    updatePhysics(time);
+                }
+
+                renderer.render(scene, camera);
+                labelRenderer.render(scene, camera);
+            }
+
+            // 截图
+            window.addEventListener('keydown', function(e) {
+                if(e.key.toLowerCase() === 'p') {
+                    const link = document.createElement('a');
+                    link.download = 'SHM_Solution_3D.png';
+                    link.href = renderer.domElement.toDataURL('image/png');
+                    link.click();
+                    const hint = document.createElement('div');
+                    hint.innerHTML = '📸 赛博课件图已截取！';
+                    hint.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:var(--primary); color:#000; padding:15px 25px; border-radius:8px; font-weight:bold; z-index:9999; box-shadow: 0 4px 20px rgba(0,0,0,0.5);';
+                    document.body.appendChild(hint);
+                    setTimeout(() => hint.remove(), 2500);
+                }
+            });
+
+            window.onresize = () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            };
+
+            // 初始化 MathJax 和初始物理状态
+            try { if (window.MathJax && typeof MathJax.typesetPromise === 'function') MathJax.typesetPromise(); } catch (e) {}
+            updatePhysics(0, true);
+            animate();
+        }; 
+    </script>
+</body>
+</html>
